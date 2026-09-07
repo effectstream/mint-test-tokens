@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { RegistryLockedError, withFileLock, writeJsonAtomic } from "../scripts/lib/atomic-json.js";
+import {
+  beginDeployment,
+  completePendingDeployment,
+  recordFinalizedDeployment,
+  type DeploymentJournal
+} from "../scripts/lib/deployment-journal.js";
 import { deploymentRevision, markRegistryStale, publishReadyRegistry } from "../scripts/lib/registry-publisher.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
 import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
@@ -61,6 +67,9 @@ test("publishes all six records atomically and preserves superseded history", as
       generatedAt: "2026-09-07T10:02:00.000Z"
     });
     assert.equal(first.tokens.length, 6);
+    const historicalWithoutProvenance = first;
+    historicalWithoutProvenance.tokens[0]!.deployments[0]!.deploymentToolchain = null;
+    await writeJsonAtomic(path, historicalWithoutProvenance, 0o644);
     const second = await publishReadyRegistry(path, {
       network,
       compatibility,
@@ -69,6 +78,7 @@ test("publishes all six records atomically and preserves superseded history", as
       generatedAt: "2026-09-07T10:03:00.000Z"
     });
     assert.equal(second.tokens[0]!.deployments[0]!.status, "superseded");
+    assert.equal(second.tokens[0]!.deployments[0]!.deploymentToolchain, null);
     assert.equal(second.tokens[0]!.deployments[1]!.status, "active");
     assert.deepEqual(JSON.parse(await readFile(path, "utf8")), second);
     assert.equal((await stat(path)).mode & 0o777, 0o644);
@@ -104,7 +114,7 @@ test("failed incomplete promotion preserves the prior ready registry", async () 
   }
 });
 
-test("revision changes with canonical identities and stale marking invalidates readiness", async () => {
+test("revision changes with canonical identities and changed-stack stale marking invalidates readiness", async () => {
   const first = records("one");
   const second = records("two");
   assert.notEqual(deploymentRevision(network, first), deploymentRevision(network, second));
@@ -118,7 +128,8 @@ test("revision changes with canonical identities and stale marking invalidates r
       revision: deploymentRevision(network, first),
       generatedAt: "2026-09-07T10:02:00.000Z"
     });
-    const stale = await markRegistryStale(path, network);
+    const changedStack = { ...network, protocolFamily: "midnight-2.x" as const, stackIdentity: "v2:new-genesis:new-runtime" };
+    const stale = await markRegistryStale(path, changedStack);
     assert.equal(stale?.status, "stale");
     assert.equal(JSON.parse(await readFile(path, "utf8")).status, "stale");
   } finally {
@@ -155,4 +166,29 @@ test("rejects concurrent writers and removes the lock after success", async () =
     await held.catch(() => undefined);
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("keeps a finalized deployment pending until verification completes", () => {
+  const fixture = records("pending").get("twBTC")!;
+  const record = { ...fixture, deploymentId: `twBTC:${fixture.contractAddress}` };
+  let journal: DeploymentJournal = {
+    schemaVersion: 1,
+    network,
+    compatibility,
+    deployments: []
+  };
+  journal = beginDeployment(journal, "twBTC", "2026-09-07T10:00:00.000Z");
+  assert.equal(journal.inFlightDeployment?.symbol, "twBTC");
+  journal = recordFinalizedDeployment(journal, record);
+  assert.equal(journal.inFlightDeployment, undefined);
+  assert.equal(journal.pendingDeployment?.record.contractAddress, record.contractAddress);
+
+  assert.throws(() => {
+    throw new Error("simulated post-finalization verification failure");
+  }, /simulated/);
+  assert.equal(journal.pendingDeployment?.record.contractAddress, record.contractAddress);
+
+  journal = completePendingDeployment(journal, { ...record, verifiedAt: "2026-09-07T10:05:00.000Z" });
+  assert.equal(journal.pendingDeployment, undefined);
+  assert.equal(journal.deployments[0]?.contractAddress, record.contractAddress);
 });

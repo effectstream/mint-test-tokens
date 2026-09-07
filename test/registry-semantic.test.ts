@@ -107,6 +107,9 @@ test("preserves a superseded v1 record when the current active context is v2", (
   const historical = clone(makeReady("v1").tokens[0]!.deployments[0]!);
   historical.deploymentId = `${historical.deploymentId}-v1`;
   historical.status = "superseded";
+  historical.deploymentToolchain = null;
   ready.tokens[0]!.deployments.push(historical);
   assert.equal(validateRegistry(ready, "undeployed").ok, true);
+  ready.tokens[0]!.deployments[0]!.deploymentToolchain = null;
+  assert.equal(validateRegistry(ready, "undeployed").ok, false);
 });

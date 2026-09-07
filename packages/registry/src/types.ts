@@ -37,7 +37,8 @@ export interface DeploymentRecord {
   verifiedAt: string;
   network: NetworkIdentity;
   compatibility: CompatibilitySnapshot;
-  deploymentToolchain: DeploymentToolchain;
+  /** Null only for preserved historical records whose original deployment provenance was not recorded. */
+  deploymentToolchain: DeploymentToolchain | null;
   confirmation: { blockHeight: string; blockHash: string };
   maintenanceAuthority: {
     status: MaintenanceAuthorityStatus;
