@@ -40,6 +40,7 @@ import {
   sourcePathsForProfile,
   verifyEmbeddedCompilerMetadata
 } from "../../scripts/lib/deployment-provenance.js";
+import { waitForFundedDeploymentWallet } from "../../scripts/lib/deployment-wallet.js";
 import { endpointConfig, rpc } from "../../scripts/lib/network-config.js";
 import {
   deploymentIdentity,
@@ -226,8 +227,9 @@ async function deployAll(): Promise<void> {
     proofServer: endpoints.proofServer,
     faucet: undefined
   }, seed));
-  await withTimeout("wallet start", wallet.start(true));
   try {
+    await withTimeout("wallet start", wallet.start(false));
+    await waitForFundedDeploymentWallet(wallet.wallet, TIMEOUT_MS);
     await withFileLock(journalPath, async () => {
       const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
       const canonicalRecords = readyDeploymentsForNetwork(previousRegistry, identity);

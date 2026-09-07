@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { Subject } from "rxjs";
 import { RegistryLockedError, withFileLock, writeJsonAtomic } from "../scripts/lib/atomic-json.js";
 import {
   beginDeployment,
@@ -26,6 +27,7 @@ import {
   resolveReproducibleSourceRevision,
   sourcePathsForProfile
 } from "../scripts/lib/deployment-provenance.js";
+import { waitForFundedDeploymentWallet, type DeploymentWalletState } from "../scripts/lib/deployment-wallet.js";
 import { validateMasterSeedHex } from "../scripts/lib/wallet-seed.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
 import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
@@ -53,6 +55,34 @@ test("accepts only supported 32-byte and 64-byte hexadecimal master seeds", () =
   for (const invalid of ["", "a5".repeat(31), "a5".repeat(33), "a5".repeat(63), "a5".repeat(65), "zz".repeat(32)]) {
     assert.throws(() => validateMasterSeedHex(invalid), /32 or 64 bytes/);
   }
+});
+
+test("waits for full synchronization and then requires positive DUST", async () => {
+  const positive = (isSynced: boolean, dust: bigint): DeploymentWalletState => ({
+    isSynced,
+    dust: { balance: () => dust }
+  });
+  const states = new Subject<DeploymentWalletState>();
+  let resolved = false;
+  const pending = waitForFundedDeploymentWallet({ state: () => states }, 1_000).then((state) => {
+    resolved = true;
+    return state;
+  });
+  states.next(positive(false, 1n));
+  await Promise.resolve();
+  assert.equal(resolved, false);
+  const funded = positive(true, 1n);
+  states.next(funded);
+  assert.equal(await pending, funded);
+
+  await assert.rejects(
+    waitForFundedDeploymentWallet({ state: () => new Subject<DeploymentWalletState>() }, 10),
+    /Timeout/
+  );
+  const zero = new Subject<DeploymentWalletState>();
+  const rejected = waitForFundedDeploymentWallet({ state: () => zero }, 1_000);
+  zero.next(positive(true, 0n));
+  await assert.rejects(rejected, /no available DUST/);
 });
 
 const records = (suffix: string): Map<TokenSymbol, DeploymentRecord> => new Map(TOKEN_DEFINITIONS.map((token, index) => [
