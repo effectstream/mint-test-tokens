@@ -52,8 +52,10 @@ a real HTTP 404 and appears as unavailable in the interface.
 Configure Pages with the repository root as the working directory, the install
 and build commands above, and `frontend/dist` as the build output directory.
 The committed `_headers` file enables cross-origin reads for registry and
-contract artifacts, revalidates registry files, and applies static security
-headers. No Pages Function is required.
+contract artifacts, applies one `public, max-age=300, must-revalidate` policy to
+registry files, and applies static security headers. The catch-all security rule
+does not set caching, which prevents Cloudflare Pages from merging a second
+`Cache-Control` value into metadata responses. No Pages Function is required.
 
 For a direct upload after a verified build:
 
@@ -72,5 +74,11 @@ reported network to the selected registry, delegates proving to the wallet,
 submits the exact bytes returned by wallet balancing, and then watches the
 wallet-selected indexer for finalization. Shielded user mints pass the
 recipient coin and encryption keys to Midnight.js so the output is encrypted
-for that recipient. Mint controls remain unavailable when metadata, wallet
-capabilities, protocol adapter, or deployment identity is unavailable.
+for that recipient. Contract mints support the repository's compatible receiver
+interface. The browser constructs one intent from the issuer's actual call
+commitment and the receiver's `receive*FromIssuer` claim, retains the receiver
+transaction offers, and proves both circuits before asking the wallet to submit
+once. The unproven calls, commitment randomness, nonce and coin data stay in
+browser memory and must not be logged. Mint controls remain unavailable when
+metadata, wallet capabilities, protocol adapter, or deployment identity is
+unavailable.

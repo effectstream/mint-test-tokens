@@ -1,14 +1,13 @@
 import type { MintRequest } from '@effectstream/mint-test-token-protocol-interface';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
-import { ContractState } from '@midnight-ntwrk/compact-runtime';
+import { ContractState as RuntimeContractState } from '@midnight-ntwrk/compact-runtime';
+import * as Ledger from '@midnight-ntwrk/ledger-v8';
 import {
-  encodeCoinPublicKey,
-  encodeUserAddress,
-  type FinalizedTransaction,
-  rawTokenType,
-  Transaction,
-} from '@midnight-ntwrk/ledger-v8';
-import { submitCallTxAsync } from '@midnight-ntwrk/midnight-js-contracts';
+  createUnprovenCallTx,
+  getPublicStates,
+  submitCallTxAsync,
+  submitTxAsync,
+} from '@midnight-ntwrk/midnight-js-contracts';
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -19,11 +18,17 @@ import {
 } from '@midnight-ntwrk/wallet-sdk-address-format';
 import * as Shielded from '../../../../contracts/v1/managed/shielded/contract/index.js';
 import * as Unshielded from '../../../../contracts/v1/managed/unshielded/contract/index.js';
+import * as Receiver from '../../../../contracts/v1/managed/receiver/contract/index.js';
 import {
   createProtocolAdapter,
   type ProtocolBridge,
   type WalletSessionLike,
 } from '../../shared/adapter-core';
+import {
+  buildClaimedContractMint,
+  type ClaimedCallLedger,
+  type CreateUnprovenCall,
+} from '../../shared/claimed-call';
 import { normalizeShieldedIdentity } from './identity';
 
 const PROFILE = 'v1';
@@ -51,6 +56,11 @@ const unshieldedContract = compileProfileContract(
   'mint-test-token-v1-unshielded',
   Unshielded.Contract,
   `./contract/${PROFILE}/unshielded`,
+);
+const receiverContract = compileProfileContract(
+  'mint-test-token-v1-receiver',
+  Receiver.Contract,
+  `./contract/${PROFILE}/receiver`,
 );
 class RoutedZkConfigProvider extends ZKConfigProvider<string> {
   constructor(
@@ -80,7 +90,7 @@ function shieldedKeys(request: Extract<MintRequest['recipient'], { kind: 'shield
 function rawUserAddress(value: string, networkId: string): string {
   const raw = trimHex(value);
   if (/^[0-9a-f]+$/.test(raw)) {
-    encodeUserAddress(raw);
+    Ledger.encodeUserAddress(raw);
     return raw;
   }
   return MidnightBech32m.parse(value).decode(UnshieldedAddress, networkId).hexString;
@@ -95,26 +105,26 @@ const bridge: ProtocolBridge = {
     new FetchZkConfigProvider(`${window.location.origin}/contract/${PROFILE}/receiver`, window.fetch.bind(window)),
   ),
   createProofProvider: (provider) => createProofProvider(provider as Parameters<typeof createProofProvider>[0]),
-  deserializeFinalizedTransaction: (bytes) => Transaction.deserialize(
+  deserializeFinalizedTransaction: (bytes) => Ledger.Transaction.deserialize(
     'signature',
     'proof',
     'binding',
     bytes,
-  ) as FinalizedTransaction,
+  ) as Ledger.FinalizedTransaction,
   isSuccessStatus: (status) => status === SucceedEntirely,
   async readMetadata(publicDataProvider, contractAddress) {
     const state = await publicDataProvider.queryContractState(contractAddress);
     if (!state || typeof state !== 'object' || !('serialize' in state)) {
       throw new Error(`No contract state found at ${contractAddress}.`);
     }
-    const runtimeState = ContractState.deserialize((state as { serialize(): Uint8Array }).serialize());
+    const runtimeState = RuntimeContractState.deserialize((state as { serialize(): Uint8Array }).serialize());
     const tryLedger = (decoder: (value: never) => { _name: string; _symbol: string; _decimals: bigint; _domain: Uint8Array }) => {
       const value = decoder(runtimeState.data as never);
       return {
         name: value._name,
         symbol: value._symbol,
         decimals: Number(value._decimals),
-        tokenId: rawTokenType(value._domain, contractAddress),
+        tokenId: Ledger.rawTokenType(value._domain, contractAddress),
       };
     };
     try {
@@ -124,10 +134,43 @@ const bridge: ProtocolBridge = {
     }
   },
   async submitMint(providers, request, networkId) {
-    if (request.recipient.kind === 'contract') {
-      throw new Error('Minting to contracts is unavailable while that recipient flow completes chain verification.');
-    }
     const contractAddress = trimHex(request.contractAddress);
+    if (request.recipient.kind === 'contract') {
+      if (request.recipient.receiverCapability !== 'mint-test-token-receiver-v1') {
+        throw new Error('The selected contract does not declare the Midnight 1.x mint-test-token receiver interface.');
+      }
+      const receiverAddress = trimHex(request.recipient.contractAddress);
+      Ledger.encodeContractAddress(receiverAddress);
+      const composed = await buildClaimedContractMint({
+        ledger: Ledger as unknown as ClaimedCallLedger,
+        networkId,
+        privacy: request.privacy,
+        amount: request.amount,
+        issuerAddress: contractAddress,
+        receiverAddress,
+        compiledIssuer: request.privacy === 'shielded' ? shieldedContract : unshieldedContract,
+        compiledReceiver: receiverContract,
+        providers,
+        publicDataProvider: providers.publicDataProvider,
+        createUnprovenCall: createUnprovenCallTx as unknown as CreateUnprovenCall,
+        readContractState: async (publicDataProvider, address) => (
+          await getPublicStates(publicDataProvider as never, address)
+        ).contractState,
+        encodeContractAddress: Ledger.encodeContractAddress,
+        entryPointHash: Ledger.entryPointHash,
+        ...(request.privacy === 'shielded'
+          ? { nonce: crypto.getRandomValues(new Uint8Array(32)) }
+          : {}),
+      });
+      const transactionId = await (submitTxAsync as unknown as (
+        selectedProviders: Record<string, unknown>,
+        options: { unprovenTx: unknown; circuitId: readonly string[] },
+      ) => Promise<string>)(providers, {
+        unprovenTx: composed.unprovenTx,
+        circuitId: composed.circuitIds,
+      });
+      return { transactionId };
+    }
     const submit = submitCallTxAsync as unknown as (
       selectedProviders: Record<string, unknown>,
       options: Record<string, unknown>,
@@ -141,7 +184,7 @@ const bridge: ProtocolBridge = {
         ? (() => {
             const keys = shieldedKeys(request.recipient, networkId);
             return {
-              value: { is_left: true, left: { bytes: encodeCoinPublicKey(keys.coinKey) }, right: { bytes: blank() } },
+              value: { is_left: true, left: { bytes: Ledger.encodeCoinPublicKey(keys.coinKey) }, right: { bytes: blank() } },
               mappings: new Map([[keys.coinKey, keys.encryptionKey]]),
             };
           })()
@@ -160,7 +203,7 @@ const bridge: ProtocolBridge = {
     }
 
     const recipient = request.recipient.kind === 'unshielded-user'
-        ? { is_left: false, left: { bytes: blank() }, right: { bytes: encodeUserAddress(rawUserAddress(request.recipient.userAddress, networkId)) } }
+        ? { is_left: false, left: { bytes: blank() }, right: { bytes: Ledger.encodeUserAddress(rawUserAddress(request.recipient.userAddress, networkId)) } }
         : (() => { throw new Error('An unshielded token requires an unshielded user or contract recipient.'); })();
     const result = await submit(providers, {
       compiledContract: unshieldedContract,

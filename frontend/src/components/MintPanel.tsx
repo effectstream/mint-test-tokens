@@ -117,7 +117,6 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
                         type="button"
                         className={recipientKind === kind ? 'active' : ''}
                         aria-pressed={recipientKind === kind}
-                        disabled={kind === 'contract'}
                         key={kind}
                         onClick={() => setRecipientKind(kind)}
                       >
@@ -125,7 +124,6 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
                       </button>
                     ))}
                   </div>
-                  <p className="form-note">Minting to contracts is unavailable while that recipient flow completes chain verification.</p>
                 </fieldset>
 
                 {recipientKind !== 'self' && (
@@ -168,7 +166,7 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
                 )}
 
                 {recipientKind === 'contract' && (
-                  <p className="form-note">The contract must implement the supported token receive and spend flow. Its address is validated before wallet approval.</p>
+                  <p className="form-note">Only use a contract that implements the mint-test-token receiver interface. The issuer and receiver calls are submitted together, and the address is validated before wallet approval.</p>
                 )}
 
                 <div className="sheet-summary">

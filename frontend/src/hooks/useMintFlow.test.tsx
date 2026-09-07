@@ -35,6 +35,38 @@ const wallet = {
 } satisfies ConnectedWalletSession;
 
 describe('mint flow', () => {
+  it('maps a compatible contract to the selected protocol receiver capability', async () => {
+    let request: MintRequest | undefined;
+    const adapter: TokenProtocolAdapter = {
+      protocolFamily: 'midnight-1.x',
+      readMetadata: async () => ({ name: twBTC.name, symbol: twBTC.symbol, decimals: 8, tokenId: twBTC.tokenId! }),
+      readBalance: async () => 0n,
+      mint: async (value) => {
+        request = value;
+        return {
+          transactionId: 'tx-contract',
+          status: 'submitted',
+          receiptDelivery: 'not-required',
+          waitForFinalization: async () => ({ transactionId: 'tx-contract' }),
+        };
+      },
+    };
+    const { result } = renderHook(() => useMintFlow({
+      network: 'preview', registryKey: 'preview-rev-1', registryReady: true,
+      protocolFamily: 'midnight-1.x', adapter, wallet, onConfirmedToSelf: vi.fn(),
+    }));
+
+    act(() => result.current.begin(twBTC));
+    act(() => result.current.review({ kind: 'contract', address: '33'.repeat(32) }));
+    await act(() => result.current.confirm());
+
+    expect(request?.recipient).toEqual({
+      kind: 'contract',
+      contractAddress: '33'.repeat(32),
+      receiverCapability: 'mint-test-token-receiver-v1',
+    });
+  });
+
   it('uses the exact fixed integer amount and refreshes after finalization', async () => {
     let request: MintRequest | undefined;
     const refresh = vi.fn();
