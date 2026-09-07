@@ -15,10 +15,11 @@ throwing. The JSON Schema provides the build-time structural gate.
 ## Local deployment
 
 The commands connect to an existing node, indexer and compatible proof server.
-They accept a funded wallet seed only through a private file; they never write
-the seed into metadata or deployment journals. The file must contain exactly
-32 bytes of hexadecimal text. Keep it outside the repository with owner-only
-permissions.
+They accept a funded wallet master seed only through a private file; they never
+write the seed into metadata or deployment journals. The file must contain
+exactly 32 or 64 bytes of hexadecimal text. Both forms are passed to the pinned
+wallet SDK's account-0/index-0 role derivation. Keep the file outside the
+repository with owner-only permissions.
 
 Midnight 1.x uses the root dependency context:
 
