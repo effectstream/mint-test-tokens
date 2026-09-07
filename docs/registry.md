@@ -97,9 +97,12 @@ locks because two writers could otherwise publish conflicting state.
 The default output is `metadata/metadata.undeployed.json`; with
 `MN_METADATA_OUTPUT_DIR=/shared/registry`, it is
 `/shared/registry/metadata.undeployed.json`. It has the same schema as the
-tracked public files and the repository-local default is gitignored. Local
-services and the website can mount or read the configured path directly. Do
-not copy local addresses into source constants.
+tracked public files and the repository-local default is gitignored. Share or
+bind-mount the configured **directory**, then have each service reopen
+`metadata.undeployed.json` by path for every read or revision refresh. Do not
+bind-mount only the JSON file: atomic publication replaces its inode, so a
+single-file bind mount can remain attached to the previous snapshot. Do not
+copy local addresses into source constants.
 
 ## Read-only verification
 
