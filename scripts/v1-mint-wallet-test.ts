@@ -7,7 +7,7 @@ import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { initializeMidnightProviders, MidnightWalletProvider } from "@midnight-ntwrk/testkit-js";
 import { NetworkId } from "@midnight-ntwrk/wallet-sdk";
 import pino from "pino";
-import { filter, firstValueFrom, timeout, type Observable } from "rxjs";
+import { filter, firstValueFrom, timeout } from "rxjs";
 import * as Shielded from "../contracts/v1/managed/shielded/contract/index.js";
 import * as Unshielded from "../contracts/v1/managed/unshielded/contract/index.js";
 import { validateRegistry } from "../packages/registry/src/semantic.js";
@@ -55,6 +55,20 @@ const waitRecipientState = async (wallet: MidnightWalletProvider, privacy: "shie
     : wallet.wallet.unshielded.waitForSyncedState();
   return withTimeout(`recipient ${privacy} sync`, synchronized);
 };
+const waitRecipientBalance = async (
+  wallet: MidnightWalletProvider,
+  privacy: "shielded" | "unshielded",
+  tokenId: string,
+  minimum: bigint
+): Promise<RecipientTokenState> => privacy === "shielded"
+  ? firstValueFrom(wallet.wallet.shielded.state.pipe(
+    filter((state) => (state.balances[tokenId] ?? 0n) >= minimum),
+    timeout({ first: TIMEOUT_MS })
+  ))
+  : firstValueFrom(wallet.wallet.unshielded.state.pipe(
+    filter((state) => (state.balances[tokenId] ?? 0n) >= minimum),
+    timeout({ first: TIMEOUT_MS })
+  ));
 const withTimeout = async <T>(label: string, operation: Promise<T>, timeoutMs = TIMEOUT_MS): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -165,13 +179,18 @@ async function runMintWalletTest(
       const finalized = checkpointPath ? await mintOperation : await withTimeout(`${definition.symbol} mint`, mintOperation);
       await checkpointLock?.verify();
       console.log(`[mint-wallet] ${definition.symbol} amount=${amount} tx=${finalized.public.txId} confirmed=true`);
-      const recipientState: Observable<RecipientTokenState> = definition.privacy === "shielded"
-        ? recipientWallet.wallet.shielded.state
-        : recipientWallet.wallet.unshielded.state;
-      const stateAfterMint = await firstValueFrom(recipientState.pipe(
-        filter((state) => (state.balances[active.tokenId] ?? 0n) >= before + amount),
-        timeout({ first: TIMEOUT_MS })
-      ));
+      let stateAfterMint: RecipientTokenState;
+      if (checkpointPath) {
+        stateAfterMint = await waitRecipientBalance(recipientWallet, definition.privacy, active.tokenId, before + amount);
+      } else {
+        const aggregateState = await firstValueFrom(recipientWallet.wallet.state().pipe(
+          filter((state) => state.isSynced && ((definition.privacy === "shielded" ? state.shielded.balances : state.unshielded.balances)[active.tokenId] ?? 0n) >= before + amount),
+          timeout({ first: TIMEOUT_MS })
+        ));
+        stateAfterMint = {
+          balances: definition.privacy === "shielded" ? aggregateState.shielded.balances : aggregateState.unshielded.balances
+        };
+      }
       console.log(`[mint-wallet] ${definition.symbol} amount=${amount} tx=${finalized.public.txId} discovered=true`);
       if (process.env.MN_SKIP_RECIPIENT_SPEND === "1") {
         console.log(`[spend-wallet] ${definition.symbol} skipped=true`);
