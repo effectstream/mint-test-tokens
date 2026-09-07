@@ -13,7 +13,9 @@ import * as Unshielded from "./managed/unshielded/contract/index.js";
 import { validateRegistry } from "../../packages/registry/src/semantic.js";
 import { TOKEN_DEFINITIONS } from "../../packages/registry/src/tokens.js";
 import type { NetworkKey, TokenRegistry } from "../../packages/registry/src/types.js";
+import { waitForFundedDeploymentWallet } from "../../scripts/lib/deployment-wallet.js";
 import { endpointConfig } from "../../scripts/lib/network-config.js";
+import { validateMasterSeedHex } from "../../scripts/lib/wallet-seed.js";
 
 const TIMEOUT_MS = Number(process.env.MN_TIMEOUT_MS ?? 180_000);
 const networkKey = (process.env.MN_NETWORK?.trim() ?? "undeployed") as NetworkKey;
@@ -23,10 +25,8 @@ const root = resolve(new URL("../..", import.meta.url).pathname);
 
 const readSeed = async (name: string): Promise<string> => {
   const path = process.env[name]?.trim();
-  if (!path) throw new Error(`Set ${name} to a private 32-byte hex seed file`);
-  const value = (await readFile(resolve(path), "utf8")).trim();
-  if (!/^[0-9a-f]{64}$/i.test(value)) throw new Error(`${name} must contain exactly 32 bytes of hex`);
-  return value;
+  if (!path) throw new Error(`Set ${name} to a private 32- or 64-byte hex seed file`);
+  return validateMasterSeedHex((await readFile(resolve(path), "utf8")).trim(), name);
 };
 const bytes = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, "hex"));
 const zero = new Uint8Array(32);
@@ -75,11 +75,16 @@ const [deployer, recipient] = await Promise.all([
   MidnightWalletProvider.build(logger, env, await readSeed("MN_SEED_FILE")),
   MidnightWalletProvider.build(logger, env, await readSeed("MN_RECIPIENT_SEED_FILE"))
 ]);
-await Promise.all([deployer.start(true), recipient.start(false)]);
 
 let operationError: unknown;
 try {
-  await Promise.all([waitSynced(deployer), waitSynced(recipient)]);
+  const started = await Promise.allSettled([deployer.start(false), recipient.start(false)]);
+  const startFailure = started.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (startFailure) throw startFailure.reason;
+  await Promise.all([
+    waitForFundedDeploymentWallet(deployer.wallet, TIMEOUT_MS),
+    waitSynced(recipient)
+  ]);
   const coinPublicKey = recipient.getCoinPublicKey();
   const encryptionPublicKey = recipient.getEncryptionPublicKey();
   const userAddress = recipient.unshieldedKeystore.getAddress();
