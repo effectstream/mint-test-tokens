@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { validateRegistry } from "../packages/registry/src/semantic.js";
+import { encodeDomainSeparator } from "../packages/registry/src/domain.js";
 import type { CompatibilitySnapshot, NetworkIdentity, TokenRegistry } from "../packages/registry/src/types.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -112,4 +113,18 @@ test("preserves a superseded v1 record when the current active context is v2", (
   assert.equal(validateRegistry(ready, "undeployed").ok, true);
   ready.tokens[0]!.deployments[0]!.deploymentToolchain = null;
   assert.equal(validateRegistry(ready, "undeployed").ok, false);
+});
+
+test("defines domain bytes as UTF-8 right-zero-padded to 32 bytes", () => {
+  const encoded = encodeDomainSeparator("twBTC");
+  assert.equal(encoded.length, 32);
+  assert.deepEqual([...encoded.slice(0, 5)], [...new TextEncoder().encode("twBTC")]);
+  assert.deepEqual([...encoded.slice(5)], Array(27).fill(0));
+  assert.throws(() => encodeDomainSeparator("é".repeat(17)), /32 UTF-8 bytes/);
+
+  const invalid = clone(base);
+  invalid.tokens[0]!.domainSeparator = "é".repeat(17);
+  const validation = validateRegistry(invalid);
+  assert.equal(validation.ok, false);
+  if (!validation.ok) assert.ok(validation.errors.some((error) => error.includes("32 UTF-8 bytes")));
 });

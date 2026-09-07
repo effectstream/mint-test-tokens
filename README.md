@@ -7,7 +7,9 @@ The registry contract and deployment commands are documented in
 [`docs/registry.md`](docs/registry.md). Public files live at
 `metadata/metadata.{network}.json`. A local deployment creates
 `metadata/metadata.undeployed.json` atomically; that file is deliberately
-ignored by Git and is the local integration source of truth.
+ignored by Git and is the local integration source of truth. Set
+`MN_METADATA_OUTPUT_DIR` to publish the same fixed filename directly into a
+stack-specific shared directory or volume.
 
 The contracts expose immutable OpenZeppelin-compatible `name`, `symbol`, and
 `decimals` metadata, a final-address-derived `tokenColor`, and a positive,

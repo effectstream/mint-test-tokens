@@ -53,7 +53,12 @@
         "name": { "type": "string", "minLength": 1 },
         "decimals": { "type": "integer", "minimum": 0, "maximum": 255 },
         "privacy": { "enum": ["shielded", "unshielded"] },
-        "domainSeparator": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "domainSeparator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "UTF-8 text encoded to at most 32 bytes, then right-padded with zero bytes to Bytes<32>; semantic validation enforces the byte limit."
+        },
         "faucet": {
           "type": "object",
           "additionalProperties": false,

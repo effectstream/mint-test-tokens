@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
 import { validateRegistry } from "../../packages/registry/src/semantic.js";
 import { TOKEN_DEFINITIONS, unavailableTokens } from "../../packages/registry/src/tokens.js";
 import type {
@@ -12,6 +13,54 @@ import type {
 import { withFileLock, writeJsonAtomic } from "./atomic-json.js";
 
 export type DeploymentSet = ReadonlyMap<TokenSymbol, DeploymentRecord>;
+
+export function metadataOutputPath(repositoryRoot: string, networkKey: NetworkIdentity["key"], configuredDirectory?: string): string {
+  const directory = resolve(configuredDirectory?.trim() || resolve(repositoryRoot, "metadata"));
+  return resolve(directory, `metadata.${networkKey}.json`);
+}
+
+export function mergeResumeDeployments(
+  journalDeployments: readonly DeploymentRecord[],
+  canonicalDeployments: DeploymentSet
+): Map<TokenSymbol, DeploymentRecord> {
+  const merged = new Map<TokenSymbol, DeploymentRecord>();
+  for (const item of journalDeployments) {
+    const definition = TOKEN_DEFINITIONS.find(({ symbol }) =>
+      item.deploymentId.startsWith(`${symbol}:`) || item.deploymentId.startsWith(`${symbol}-`)
+    );
+    if (!definition) throw new Error(`Cannot recover unknown deployment id ${item.deploymentId}`);
+    merged.set(definition.symbol, item);
+  }
+  for (const [symbol, record] of canonicalDeployments) merged.set(symbol, record);
+  return merged;
+}
+
+export function readyDeploymentsForNetwork(
+  registry: TokenRegistry | undefined,
+  network: NetworkIdentity
+): Map<TokenSymbol, DeploymentRecord> {
+  if (!registry || registry.status !== "ready") return new Map();
+  const validation = validateRegistry(registry, network.key);
+  if (!validation.ok) throw new Error(`Cannot recover from invalid ready registry:\n${validation.errors.join("\n")}`);
+  if (JSON.stringify(registry.network) !== JSON.stringify(network)) return new Map();
+  const deployments = new Map<TokenSymbol, DeploymentRecord>();
+  for (const token of registry.tokens) {
+    const active = token.deployments.find((item) => item.status === "active" && item.deploymentId === token.activeDeploymentId);
+    if (!active) throw new Error(`${token.symbol}: ready registry has no selected active deployment`);
+    deployments.set(token.symbol, active);
+  }
+  return deployments;
+}
+
+export function deploymentIdentity(
+  symbol: TokenSymbol,
+  network: NetworkIdentity,
+  contractAddress: string,
+  deploymentTransaction: string
+): string {
+  const context = JSON.stringify({ network, contractAddress, deploymentTransaction });
+  return `${symbol}:${createHash("sha256").update(context).digest("hex")}`;
+}
 
 export function deploymentRevision(network: NetworkIdentity, deployments: DeploymentSet): string {
   const identities = TOKEN_DEFINITIONS.map(({ symbol }) => {
@@ -52,7 +101,11 @@ export function promoteReadyRegistry(options: {
     if (!deployment) throw new Error(`Cannot publish ready registry without ${definition.symbol}`);
     const old = existingBySymbol.get(definition.symbol);
     const history = (old?.deployments ?? [])
-      .filter((item) => item.deploymentId !== deployment.deploymentId)
+      .filter((item) => !(
+        item.deploymentId === deployment.deploymentId &&
+        item.network.stackIdentity === deployment.network.stackIdentity &&
+        item.deploymentTransaction === deployment.deploymentTransaction
+      ))
       .map((item) => ({
         ...item,
         status: "superseded" as const,
