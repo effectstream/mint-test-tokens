@@ -148,7 +148,11 @@ compatible proof server for deployment. For v2 Stagenet, set
 `https://indexer.stagenet.shielded.tools/api/v4/graphql`, and the corresponding
 WebSocket endpoints. Set `MN_PROOF_SERVER_URL` to an accessible compatible
 9.0.0-rc.5 proof server. Public deployment additionally requires a privately
-configured funded wallet.
+configured funded wallet. Public history synchronization can exceed the
+testkit's short local-faucet wait, so the deployment command starts without a
+faucet request, waits for all wallet streams under `MN_TIMEOUT_MS`, and requires
+the synchronized wallet to expose positive DUST before writing a deployment
+intent or submitting a transaction.
 
 ## Issuer interface
 
