@@ -73,8 +73,9 @@ The site discovers DApp Connector API 4.x wallets. It compares the wallet's
 reported network to the selected registry, delegates proving to the wallet,
 submits the exact bytes returned by wallet balancing, and then watches the
 wallet-selected indexer for finalization. Shielded user mints pass the
-recipient coin and encryption keys to Midnight.js so the output is encrypted
-for that recipient. Contract mints support the repository's compatible receiver
+recipient's full standard shielded address through the selected protocol codec;
+the adapter derives its coin and encryption keys before wallet approval so the
+output is encrypted for that recipient. Contract mints support the repository's compatible receiver
 interface. The browser constructs one intent from the issuer's actual call
 commitment and the receiver's `receive*FromIssuer` claim, retains the receiver
 transaction offers, and proves both circuits before asking the wallet to submit

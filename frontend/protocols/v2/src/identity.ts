@@ -14,6 +14,11 @@ export interface ShieldedIdentityInput {
   encryptionPublicKey: string;
 }
 
+export interface ResolvedShieldedAddress {
+  coinKey: string;
+  encryptionKey: string;
+}
+
 function rawHex(value: string): string | null {
   const normalized = value.trim().replace(/^0x/i, '').toLowerCase();
   return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
@@ -54,14 +59,22 @@ function encryptionKey(value: string, networkId: string): string {
 }
 
 export function normalizeShieldedIdentity(value: ShieldedIdentityInput, networkId: string) {
-  const address = parseBech32m(value.shieldedAddress).decode(ShieldedAddress, networkId);
+  const resolved = resolveShieldedAddress(value.shieldedAddress, networkId);
   const normalizedCoinKey = coinKey(value.coinPublicKey, networkId);
   const normalizedEncryptionKey = encryptionKey(value.encryptionPublicKey, networkId);
-  if (address.coinPublicKeyString().toLowerCase() !== normalizedCoinKey.toLowerCase()) {
+  if (resolved.coinKey !== normalizedCoinKey.toLowerCase()) {
     throw new Error('Shielded address and coin public key do not match.');
   }
-  if (address.encryptionPublicKeyString().toLowerCase() !== normalizedEncryptionKey.toLowerCase()) {
+  if (resolved.encryptionKey !== normalizedEncryptionKey.toLowerCase()) {
     throw new Error('Shielded address and encryption public key do not match.');
   }
   return { coinKey: normalizedCoinKey, encryptionKey: normalizedEncryptionKey };
+}
+
+export function resolveShieldedAddress(shieldedAddress: string, networkId: string): ResolvedShieldedAddress {
+  const address = parseBech32m(shieldedAddress).decode(ShieldedAddress, networkId);
+  return {
+    coinKey: requireKeyHex(address.coinPublicKeyString().toLowerCase()),
+    encryptionKey: requireKeyHex(address.encryptionPublicKeyString().toLowerCase()),
+  };
 }

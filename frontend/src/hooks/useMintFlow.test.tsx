@@ -110,6 +110,47 @@ describe('mint flow', () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
+  it('resolves one third-party shielded address before mint submission', async () => {
+    let request: MintRequest | undefined;
+    const resolveShieldedRecipient = vi.fn((shieldedAddress: string) => ({
+      kind: 'shielded-user' as const,
+      shieldedAddress,
+      coinPublicKey: '11'.repeat(32),
+      encryptionPublicKey: '22'.repeat(32),
+    }));
+    const adapter = {
+      protocolFamily: 'midnight-1.x' as const,
+      resolveShieldedRecipient,
+      readMetadata: async () => ({ name: twBTC.name, symbol: twBTC.symbol, decimals: 8, tokenId: twBTC.tokenId! }),
+      readBalance: async () => 0n,
+      mint: async (value: MintRequest) => {
+        request = value;
+        return {
+          transactionId: 'tx-third-party',
+          status: 'submitted' as const,
+          receiptDelivery: 'encrypted-output' as const,
+          waitForFinalization: async () => ({ transactionId: 'tx-third-party' }),
+        };
+      },
+    };
+    const { result } = renderHook(() => useMintFlow({
+      network: 'preview', registryKey: 'preview-rev-1', registryReady: true,
+      protocolFamily: 'midnight-1.x', adapter, wallet, onConfirmedToSelf: vi.fn(),
+    }));
+
+    act(() => result.current.begin(twBTC));
+    act(() => result.current.review({ kind: 'user', address: 'mn_shield-addr_preview1recipient' }));
+    await act(() => result.current.confirm());
+
+    expect(resolveShieldedRecipient).toHaveBeenCalledWith('mn_shield-addr_preview1recipient');
+    expect(request?.recipient).toEqual({
+      kind: 'shielded-user',
+      shieldedAddress: 'mn_shield-addr_preview1recipient',
+      coinPublicKey: '11'.repeat(32),
+      encryptionPublicKey: '22'.repeat(32),
+    });
+  });
+
   it('reports a wallet rejection as cancelled with no blind retry', async () => {
     const adapter: TokenProtocolAdapter = {
       protocolFamily: 'midnight-1.x',

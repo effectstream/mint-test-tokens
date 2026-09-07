@@ -86,7 +86,7 @@ export type RecipientKind = 'self' | 'user' | 'contract';
 
 export type MintRecipient =
   | { kind: 'self' }
-  | { kind: 'user'; address: string; coinPublicKey?: string; encryptionPublicKey?: string }
+  | { kind: 'user'; address: string }
   | { kind: 'contract'; address: string };
 
 export type MintState =

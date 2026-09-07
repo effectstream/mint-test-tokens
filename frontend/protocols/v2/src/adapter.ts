@@ -29,7 +29,7 @@ import {
   type ClaimedCallLedger,
   type CreateUnprovenCall,
 } from '../../shared/claimed-call';
-import { normalizeShieldedIdentity } from './identity';
+import { normalizeShieldedIdentity, resolveShieldedAddress } from './identity';
 
 const PROFILE = 'v2';
 const blank = () => new Uint8Array(32);
@@ -114,6 +114,7 @@ const bridge: ProtocolBridge = {
     'binding',
     bytes,
   ) as Ledger.FinalizedTransaction,
+  resolveShieldedAddress,
   isSuccessStatus: (status) => status === SucceedEntirely,
   async readMetadata(publicDataProvider, contractAddress) {
     const state = await publicDataProvider.queryContractState(contractAddress);

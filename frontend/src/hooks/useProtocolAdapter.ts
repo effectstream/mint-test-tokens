@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { TokenProtocolAdapter } from '@effectstream/mint-test-token-protocol-interface';
 import type { RegistryView } from '../domain/model';
+import type { DisposableProtocolAdapter } from '../../protocols/shared/adapter-core';
 import type { ConnectedWalletSession } from './useWallet';
-
-type DisposableAdapter = TokenProtocolAdapter & { dispose(): void };
 
 export type ProtocolAdapterState =
   | { kind: 'idle'; adapter: null }
   | { kind: 'loading'; adapter: null }
-  | { kind: 'ready'; adapter: DisposableAdapter }
+  | { kind: 'ready'; adapter: DisposableProtocolAdapter }
   | { kind: 'error'; adapter: null; message: string };
 
 export function useProtocolAdapter(
@@ -19,7 +17,7 @@ export function useProtocolAdapter(
 
   useEffect(() => {
     let active = true;
-    let adapter: DisposableAdapter | undefined;
+    let adapter: DisposableProtocolAdapter | undefined;
     if (!registry || !session) {
       setState({ kind: 'idle', adapter: null });
       return;

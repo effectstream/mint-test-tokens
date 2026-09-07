@@ -28,6 +28,7 @@ describe('protocol adapter wallet boundary', () => {
     } as ConnectedWalletCapabilities;
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x',
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       setNetworkId: vi.fn(),
       createPublicDataProvider: () => publicData,
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({ source: 'site' }) }),
@@ -62,6 +63,12 @@ describe('protocol adapter wallet boundary', () => {
       amount: 1n,
     };
 
+    expect(adapter.resolveShieldedRecipient(' shielded-recipient ')).toEqual({
+      kind: 'shielded-user',
+      shieldedAddress: 'shielded-recipient',
+      coinPublicKey: 'coin',
+      encryptionPublicKey: 'enc',
+    });
     const submission = await adapter.mint(request);
     expect(submitTransaction).toHaveBeenCalledWith('aabbcc');
     expect(getProvingProvider).toHaveBeenCalledWith({ source: 'site' });
@@ -86,6 +93,7 @@ describe('protocol adapter wallet boundary', () => {
     } as ConnectedWalletCapabilities;
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x',
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       setNetworkId: () => undefined,
       createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
@@ -139,6 +147,7 @@ describe('protocol adapter wallet boundary', () => {
     } as ConnectedWalletCapabilities;
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x',
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       setNetworkId: vi.fn(),
       createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
@@ -192,6 +201,7 @@ describe('protocol adapter wallet boundary', () => {
     const submitMint = vi.fn();
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
       createProofProvider: (provider) => provider,
@@ -245,6 +255,7 @@ describe('protocol adapter wallet boundary', () => {
     const submitMint = vi.fn();
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
       createProofProvider: (provider) => provider,
@@ -302,6 +313,7 @@ describe('protocol adapter wallet boundary', () => {
     } as ConnectedWalletCapabilities;
     const bridge: ProtocolBridge = {
       protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      resolveShieldedAddress: () => ({ coinKey: 'coin', encryptionKey: 'enc' }),
       createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
       createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
       createProofProvider: (provider) => provider,

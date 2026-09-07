@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MintSession, TokenView } from '../domain/model';
 import { MintPanel } from './MintPanel';
 
@@ -27,7 +27,23 @@ const session: MintSession = {
   state: { kind: 'idle' },
 };
 
-describe('contract recipient controls', () => {
+afterEach(cleanup);
+
+describe('recipient controls', () => {
+  it('reviews another shielded wallet from one standard address', async () => {
+    const user = userEvent.setup();
+    const onReview = vi.fn();
+    render(<MintPanel session={session} onClose={vi.fn()} onReview={onReview} onConfirm={vi.fn()} onReset={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Another user' }));
+    expect(screen.queryByRole('textbox', { name: /coin public key/i })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /encryption public key/i })).toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /^Shielded address/ }), 'mn_shield-addr_preview1recipient');
+    await user.click(screen.getByRole('button', { name: /Review mint/ }));
+
+    expect(onReview).toHaveBeenCalledWith({ kind: 'user', address: 'mn_shield-addr_preview1recipient' });
+  });
+
   it('allows review of a compatible receiver address after chain acceptance', async () => {
     const user = userEvent.setup();
     const onReview = vi.fn();

@@ -1,6 +1,7 @@
 import type {
   ConnectedWalletCapabilities,
   MintRequest,
+  Recipient,
   TokenProtocolAdapter,
 } from '@effectstream/mint-test-token-protocol-interface';
 
@@ -33,6 +34,10 @@ export interface ProtocolBridge {
   createZkConfigProvider(baseUrl: string, privacy: MintRequest['privacy']): ZkConfigProviderLike;
   createProofProvider(provingProvider: unknown): unknown;
   deserializeFinalizedTransaction(bytes: Uint8Array): FinalizedTransactionLike;
+  resolveShieldedAddress(
+    shieldedAddress: string,
+    networkId: string,
+  ): { coinKey: string; encryptionKey: string };
   submitMint(
     providers: Record<string, unknown>,
     request: MintRequest,
@@ -57,7 +62,13 @@ export interface WalletSessionLike {
   assertCurrent(): Promise<Awaited<ReturnType<ConnectedWalletCapabilities['getConfiguration']>>>;
 }
 
-export type DisposableProtocolAdapter = TokenProtocolAdapter & { dispose(): void };
+export type ShieldedUserRecipient = Extract<Recipient, { kind: 'shielded-user' }>;
+
+export type BrowserProtocolAdapter = TokenProtocolAdapter & {
+  resolveShieldedRecipient(shieldedAddress: string): ShieldedUserRecipient;
+};
+
+export type DisposableProtocolAdapter = BrowserProtocolAdapter & { dispose(): void };
 
 function hexToBytes(value: string): Uint8Array {
   const hex = value.trim().replace(/^0x/i, '');
@@ -202,6 +213,17 @@ export function createProtocolAdapter(
 
   return {
     protocolFamily: bridge.protocolFamily,
+    resolveShieldedRecipient(shieldedAddress) {
+      if (disposed) throw new Error('The wallet session was disconnected.');
+      const normalizedAddress = shieldedAddress.trim();
+      const keys = bridge.resolveShieldedAddress(normalizedAddress, session.networkId);
+      return {
+        kind: 'shielded-user',
+        shieldedAddress: normalizedAddress,
+        coinPublicKey: keys.coinKey,
+        encryptionPublicKey: keys.encryptionKey,
+      };
+    },
     async mint(request) {
       await assertActiveSession();
       if (request.networkKey && request.amount <= 0n) throw new Error('Mint amount must be positive.');

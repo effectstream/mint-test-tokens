@@ -28,14 +28,10 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
   const titleId = useId();
   const [recipientKind, setRecipientKind] = useState<RecipientKind>('self');
   const [address, setAddress] = useState('');
-  const [coinPublicKey, setCoinPublicKey] = useState('');
-  const [encryptionPublicKey, setEncryptionPublicKey] = useState('');
 
   useEffect(() => {
     setRecipientKind('self');
     setAddress('');
-    setCoinPublicKey('');
-    setEncryptionPublicKey('');
   }, [session?.token.tokenId]);
 
   useEffect(() => {
@@ -54,23 +50,12 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
   const isInput = state.kind === 'idle';
   const isReview = state.kind === 'reviewing';
   const isProgress = !isInput && !isReview;
-  const needsEncryption = token.privacy === 'shielded' && recipientKind === 'user';
-  const canReview = recipientKind === 'self' || (
-    address.trim().length > 0
-    && (!needsEncryption || (coinPublicKey.trim().length > 0 && encryptionPublicKey.trim().length > 0))
-  );
+  const canReview = recipientKind === 'self' || address.trim().length > 0;
   const recipient: MintRecipient = recipientKind === 'self'
     ? { kind: 'self' }
     : recipientKind === 'contract'
       ? { kind: 'contract', address: address.trim() }
-      : {
-          kind: 'user',
-          address: address.trim(),
-          ...(needsEncryption ? {
-            coinPublicKey: coinPublicKey.trim(),
-            encryptionPublicKey: encryptionPublicKey.trim(),
-          } : {}),
-        };
+      : { kind: 'user', address: address.trim() };
   const [progressTitle, progressBody] = progressCopy(session);
 
   return (
@@ -136,33 +121,10 @@ export function MintPanel({ session, onClose, onReview, onConfirm, onReset }: Mi
                       onChange={(event) => setAddress(event.target.value)}
                       placeholder={recipientKind === 'contract' ? 'Contract address' : token.privacy === 'shielded' ? 'Recipient shielded address' : 'Recipient address'}
                     />
+                    {recipientKind === 'user' && token.privacy === 'shielded' && (
+                      <small>Paste the recipient's full Midnight shielded address.</small>
+                    )}
                   </label>
-                )}
-
-                {needsEncryption && (
-                  <>
-                    <label className="field-label">
-                      <span>Shielded coin public key</span>
-                      <input
-                        autoComplete="off"
-                        spellCheck="false"
-                        value={coinPublicKey}
-                        onChange={(event) => setCoinPublicKey(event.target.value)}
-                        placeholder="Recipient coin key"
-                      />
-                    </label>
-                    <label className="field-label">
-                      <span>Shielded encryption public key</span>
-                      <input
-                        autoComplete="off"
-                        spellCheck="false"
-                        value={encryptionPublicKey}
-                        onChange={(event) => setEncryptionPublicKey(event.target.value)}
-                        placeholder="Recipient encryption key"
-                      />
-                      <small>The address and both keys are checked before approval so the recipient can discover the minted coin.</small>
-                    </label>
-                  </>
                 )}
 
                 {recipientKind === 'contract' && (

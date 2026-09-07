@@ -6,19 +6,27 @@ import type {
 } from '@effectstream/mint-test-token-protocol-interface';
 import type { MintRecipient, MintSession, NetworkKey, TokenView } from '../domain/model';
 import { errorMessage, isUserCancellation } from '../lib/format';
+import type { BrowserProtocolAdapter } from '../../protocols/shared/adapter-core';
 import type { ConnectedWalletSession } from './useWallet';
+
+function hasShieldedRecipientResolver(
+  adapter: TokenProtocolAdapter,
+): adapter is BrowserProtocolAdapter {
+  return 'resolveShieldedRecipient' in adapter
+    && typeof adapter.resolveShieldedRecipient === 'function';
+}
 
 function protocolRecipient(
   draft: MintRecipient,
   token: TokenView,
   wallet: ConnectedWalletSession,
-  protocolFamily: TokenProtocolAdapter['protocolFamily'],
+  adapter: TokenProtocolAdapter,
 ): Recipient {
   if (draft.kind === 'contract') {
     return {
       kind: 'contract',
       contractAddress: draft.address,
-      receiverCapability: protocolFamily === 'midnight-1.x'
+      receiverCapability: adapter.protocolFamily === 'midnight-1.x'
         ? 'mint-test-token-receiver-v1'
         : 'mint-test-token-receiver-v2',
     };
@@ -37,15 +45,10 @@ function protocolRecipient(
       encryptionPublicKey: wallet.shieldedEncryptionPublicKey,
     };
   }
-  if (!draft.coinPublicKey || !draft.encryptionPublicKey) {
-    throw new Error('Shielded recipients require their address, coin public key, and encryption public key.');
+  if (!hasShieldedRecipientResolver(adapter)) {
+    throw new Error('The selected protocol adapter cannot validate a shielded recipient address.');
   }
-  return {
-    kind: 'shielded-user',
-    shieldedAddress: draft.address,
-    coinPublicKey: draft.coinPublicKey,
-    encryptionPublicKey: draft.encryptionPublicKey,
-  };
+  return adapter.resolveShieldedRecipient(draft.address);
 }
 
 function uncertainTransaction(error: unknown): string | undefined {
@@ -158,7 +161,7 @@ export function useMintFlow({
       if (!contextIsCurrent()) {
         throw new Error('The wallet or canonical registry changed before submission. Review the current token record and try again.');
       }
-      const recipient = protocolRecipient(session.recipient, token, wallet, adapter.protocolFamily);
+      const recipient = protocolRecipient(session.recipient, token, wallet, adapter);
       const amount = BigInt(token.faucetBaseUnits);
       if (amount <= 0n) throw new Error('Canonical faucet amount must be positive.');
       const request: MintRequest = {
