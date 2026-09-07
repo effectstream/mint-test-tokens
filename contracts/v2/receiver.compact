@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+// TEST FIXTURE ONLY. Deploy one receiver per shielded token color. The fixture
+// intentionally has no access control so integration tests can exercise a
+// persisted contract-owned coin and send it to a user or another contract.
+ledger shieldedCoin: QualifiedShieldedCoinInfo;
+ledger hasShieldedCoin: Boolean;
+
+pure circuit shieldedRecipientIsZero(
+  recipient: Either<ZswapCoinPublicKey, ContractAddress>
+): Boolean {
+  return recipient.is_left
+    ? recipient.left == default<ZswapCoinPublicKey>
+    : recipient.right == default<ContractAddress>;
+}
+
+pure circuit unshieldedRecipientIsZero(
+  recipient: Either<ContractAddress, UserAddress>
+): Boolean {
+  return recipient.is_left
+    ? recipient.left == default<ContractAddress>
+    : recipient.right == default<UserAddress>;
+}
+
+// The issuer mint and this call must be composed into the same transaction.
+// receiveShielded claims the contract-addressed output; writeCoin persists the
+// resulting coin with its Merkle-tree index for spending in a later transaction.
+export circuit receiveShieldedToken(coin: ShieldedCoinInfo): [] {
+  assert(coin.value > 0, "amount must be positive");
+
+  receiveShielded(disclose(coin));
+
+  if (hasShieldedCoin) {
+    assert(shieldedCoin.color == coin.color, "receiver holds another token color");
+    shieldedCoin.writeCoin(
+      mergeCoinImmediate(shieldedCoin, disclose(coin)),
+      right<ZswapCoinPublicKey, ContractAddress>(kernel.self())
+    );
+  } else {
+    shieldedCoin.writeCoin(
+      disclose(coin),
+      right<ZswapCoinPublicKey, ContractAddress>(kernel.self())
+    );
+    hasShieldedCoin = true;
+  }
+}
+
+// The returned coin is also recorded as the recipient's normal encrypted
+// Zswap output. For a user recipient, the transaction must include that user's
+// coin-encryption public-key mapping so an independent wallet can discover it.
+export circuit spendShieldedToken(
+  recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+  amount: Uint<128>
+): ShieldedCoinInfo {
+  assert(amount > 0, "amount must be positive");
+  assert(hasShieldedCoin, "no shielded coin held");
+  assert(!shieldedRecipientIsZero(recipient), "invalid recipient");
+  assert(shieldedCoin.value >= amount, "insufficient shielded balance");
+
+  const result = sendShielded(shieldedCoin, disclose(recipient), disclose(amount));
+
+  if (result.change.is_some) {
+    shieldedCoin.writeCoin(
+      result.change.value,
+      right<ZswapCoinPublicKey, ContractAddress>(kernel.self())
+    );
+  } else {
+    hasShieldedCoin = false;
+    shieldedCoin = QualifiedShieldedCoinInfo {
+      nonce: pad(32, ""),
+      color: pad(32, ""),
+      value: 0,
+      mt_index: 0
+    };
+  }
+
+  return result.sent;
+}
+
+export circuit getShieldedBalance(): Uint<128> {
+  return hasShieldedCoin ? shieldedCoin.value : 0;
+}
+
+export circuit getShieldedColor(): Bytes<32> {
+  return hasShieldedCoin ? shieldedCoin.color : pad(32, "");
+}
+
+// The issuer mint and this call must be composed into the same transaction.
+// The issuer supplies the matching output while this circuit supplies the
+// receiver contract's input declaration.
+export circuit receiveUnshieldedToken(color: Bytes<32>, amount: Uint<128>): [] {
+  assert(amount > 0, "amount must be positive");
+  receiveUnshielded(disclose(color), disclose(amount));
+}
+
+export circuit spendUnshieldedToken(
+  recipient: Either<ContractAddress, UserAddress>,
+  color: Bytes<32>,
+  amount: Uint<128>
+): [] {
+  assert(amount > 0, "amount must be positive");
+  assert(!unshieldedRecipientIsZero(recipient), "invalid recipient");
+  assert(
+    unshieldedBalanceGte(disclose(color), disclose(amount)),
+    "insufficient unshielded balance"
+  );
+  sendUnshielded(disclose(color), disclose(amount), disclose(recipient));
+}
+
+// This imposes an exact start-of-execution balance constraint. Use it only as
+// a read call, never to decide a spend inside a transaction.
+export circuit getUnshieldedBalance(color: Bytes<32>): Uint<128> {
+  return unshieldedBalance(disclose(color));
+}

@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "tsc -b",
     "check": "npm run build && node packages/registry/dist/validate.js",
+    "test:registry": "node --import tsx --test test/registry-semantic.test.ts",
     "clean": "tsc -b --clean"
   },
   "devDependencies": {
@@ -15,5 +18,23 @@
     "ajv-formats": "3.0.1",
     "typescript": "5.9.2"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-js": "2.5.1",
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/ledger-v8": "8.1.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "pino": "10.3.1",
+    "tsx": "4.20.6"
+  },
+  "overrides": {
+    "@midnight-ntwrk/compact-js": "2.5.1",
+    "@midnight-ntwrk/ledger-v8": "8.1.0",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  }
 }

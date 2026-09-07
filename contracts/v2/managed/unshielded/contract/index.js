@@ -738,6 +738,12 @@ const _dummyContract = new Contract({ });
 export const pureCircuits = {};
 export const contractReferenceLocations =
   { tag: 'publicLedgerArray', indices: { } };
-export const expectedVk = {};
+export const expectedVk = {
+  'decimals': '244f09da9dddb38058c5fcb70394b3722de68535738a66480e31f2c912bb949f',
+  'mint': 'a5237a1adc03ea2c27714ba3006f52d76e64e8c7d41f339a1aba071661e76ee6',
+  'name': '2e3b5ac008f4fc5349ed8105579009f2a6f44c06963d884ff39afe41ffe6c696',
+  'symbol': 'b36a8137f9cb7bce5546e12d5194c5e72a8caa1b11441c35a0f2379246e04387',
+  'tokenColor': '0f054922d52a3d708f7ee4da0e370b4b39171f57f276883ac64745a4882c66ab',
+};
 
 //# sourceMappingURL=index.js.map

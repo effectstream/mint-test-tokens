@@ -8,3 +8,5 @@ metadata.undeployed.json
 .env
 .env.*
 !.env.example
+.local/
+midnight-level-db/

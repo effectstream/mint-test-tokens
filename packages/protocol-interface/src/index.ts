@@ -23,10 +23,15 @@ export interface MintRequest {
 
 export interface MintSubmission {
   transactionId: string;
-  waitForConfirmation(): Promise<{ blockHeight: bigint }>;
-  /** Present only for a shielded mint. It is not wallet-discoverable by chain scan. */
+  status: "submitted";
+  waitForFinalization(): Promise<{
+    transactionId: string;
+    blockHeight?: bigint;
+    blockHash?: string;
+  }>;
+  /** Present for a shielded mint so callers can verify the encrypted output. */
   shieldedCoinInfo?: { nonce: Uint8Array; color: Uint8Array; value: bigint };
-  receiptDelivery: "not-required" | "wallet-confirmed" | "pending";
+  receiptDelivery: "not-required" | "encrypted-output" | "pending";
 }
 
 export interface TokenProtocolAdapter {
@@ -47,6 +52,7 @@ export interface ConnectedWalletCapabilities {
   }>;
   getUnshieldedAddress(): Promise<{ unshieldedAddress: string }>;
   getConfiguration(): Promise<{ networkId: string; indexerUri: string; indexerWsUri: string; substrateNodeUri: string }>;
+  getProvingProvider(keyMaterialProvider: unknown): Promise<unknown>;
   balanceUnsealedTransaction(tx: string, options?: { payFees?: boolean }): Promise<{ tx: string }>;
   submitTransaction(tx: string): Promise<void>;
 }
