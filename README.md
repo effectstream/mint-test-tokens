@@ -37,3 +37,18 @@ A preview may honestly publish registries whose status is `unavailable`, with
 no active deployment identities and disabled mint controls. Describe that URL
 as an unavailable-token preview. A mint-ready public release requires the
 tracked registry and on-chain deployment checks to pass first.
+
+## Public registry status
+
+The Cloudflare Pages branch preview is
+[`codex-00002-mint-test-tokens.mint-test-tokens.pages.dev`](https://codex-00002-mint-test-tokens.mint-test-tokens.pages.dev/).
+Verify its JSON revision against the tracked files after each publication.
+
+| Network | Protocol | Tracked status | Registry revision |
+|---|---|---|---|
+| Preview | Midnight 1.x | Ready; six verified active deployment identities | `c15d38f3a00a319c15ff10e39a2d4926763a4438e7fbb3bfc202bd15aa5a7d28` |
+| Preprod | Midnight 1.x | Unavailable; no active deployment identities | `unreleased` |
+| Stagenet | Midnight 2.x | Ready; six verified active deployment identities | `7af8d3889254783bf8383beb141e4d6a5b8a43ee6c600ad5989cb6d448c071a0` |
+
+The site evaluates each selected network independently. Ready Preview and
+Stagenet registries do not enable minting on Preprod.

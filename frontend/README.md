@@ -141,12 +141,15 @@ existing artifact with a newer commit.
 npx --prefix frontend wrangler pages deploy "$release_dir" --project-name mint-test-tokens
 ```
 
-An explicitly labeled preview may contain the tracked public registries in
-their intentional `unavailable` state, with empty deployments and no canonical
-addresses. Mint-ready publication requires verified on-chain identities and a
-ready semantic registry. In either case, verify the deployed home page, all
-three public JSON files byte-for-byte, wildcard JSON CORS, their single cache
-policy, representative v1/v2 artifacts, and 404 responses for
+An explicitly labeled preview may contain different validated states for its
+tracked public registries. In the current source, Preview and Stagenet are
+`ready` with six verified active deployments each, while Preprod is
+`unavailable` with empty deployments and no canonical addresses. Mint controls
+follow the selected registry independently. Mint-ready publication for a
+network requires verified on-chain identities and a ready semantic registry.
+In every release, verify the deployed home page, all three public JSON files
+byte-for-byte, wildcard JSON CORS, their single cache policy, representative
+v1/v2 artifacts, and 404 responses for
 `metadata.undeployed.json` and a missing artifact. The local undeployed file
 must never appear in the release directory.
 
