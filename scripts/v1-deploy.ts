@@ -25,6 +25,13 @@ import type {
   TokenSymbol
 } from "../packages/registry/src/types.js";
 import { writeJsonAtomic, withFileLock } from "./lib/atomic-json.js";
+import {
+  beginDeployment,
+  clearConfirmedAbsentIntent,
+  completePendingDeployment,
+  recordFinalizedDeployment,
+  type DeploymentJournal
+} from "./lib/deployment-journal.js";
 import { endpointConfig, rpc } from "./lib/network-config.js";
 import { deploymentRevision, markRegistryStale, publishReadyRegistry, readRegistry } from "./lib/registry-publisher.js";
 
@@ -174,6 +181,13 @@ async function deployAll(): Promise<void> {
   const seed = (await readFile(resolve(seedPath), "utf8")).trim();
   if (!/^[0-9a-f]{64}$/i.test(seed)) throw new Error("MN_SEED_FILE must contain exactly 32 bytes of hex");
   const identity = await stackIdentity();
+  const previousRegistry = await readRegistry(outputPath);
+  if (previousRegistry?.status === "ready" && previousRegistry.network.key === identity.key &&
+      (previousRegistry.network.protocolFamily !== identity.protocolFamily ||
+       previousRegistry.network.chainId !== identity.chainId ||
+       previousRegistry.network.stackIdentity !== identity.stackIdentity)) {
+    await markRegistryStale(outputPath, identity);
+  }
   const sourceRevision = process.env.SOURCE_REVISION?.trim() || execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   if (!/^[0-9a-f]{40}$/.test(sourceRevision)) throw new Error("SOURCE_REVISION must be a full git SHA");
   const journalPath = resolve(root, ".local", "deployments", `v1-${networkKey}-${createHash("sha256").update(identity.stackIdentity!).digest("hex")}.json`);
@@ -195,8 +209,46 @@ async function deployAll(): Promise<void> {
   await withTimeout("wallet start", wallet.start(true));
   try {
     await withFileLock(journalPath, async () => {
-      const journal = (await readRegistry(journalPath)) as unknown as { deployments?: DeploymentRecord[] } | undefined;
-      const records = new Map<TokenSymbol, DeploymentRecord>((journal?.deployments ?? []).map((item) => [item.deploymentId.split(":")[0] as TokenSymbol, item]));
+      const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
+      let journal: DeploymentJournal = {
+        schemaVersion: 1,
+        network: identity,
+        compatibility: COMPATIBILITY,
+        deployments: stored?.deployments ?? [],
+        ...(stored?.inFlightDeployment ? { inFlightDeployment: stored.inFlightDeployment } : {}),
+        ...(stored?.pendingDeployment ? { pendingDeployment: stored.pendingDeployment } : {})
+      };
+      const saveJournal = async (): Promise<void> => writeJsonAtomic(journalPath, journal);
+      if (journal.inFlightDeployment) {
+        if (process.env.MN_CONFIRM_NO_DEPLOYMENT !== "1") {
+          throw new Error(`${journal.inFlightDeployment.symbol}: prior deployment outcome is uncertain. Reconcile the node/indexer before retrying; set MN_CONFIRM_NO_DEPLOYMENT=1 only after confirming that no contract finalized.`);
+        }
+        journal = clearConfirmedAbsentIntent(journal);
+        await saveJournal();
+      }
+      const records = new Map<TokenSymbol, DeploymentRecord>(journal.deployments.map((item) => [item.deploymentId.split(":")[0] as TokenSymbol, item]));
+      if (journal.pendingDeployment) {
+        const pending = journal.pendingDeployment;
+        const token = TOKEN_DEFINITIONS.find((item) => item.symbol === pending.symbol);
+        if (!token) throw new Error(`Unknown pending deployment symbol ${pending.symbol}`);
+        try {
+          const checked = await verifyContract(token, pending.record.contractAddress);
+          if (checked.tokenId !== pending.record.tokenId) throw new DeploymentVerificationError(`${token.symbol}: pending token id mismatch`);
+          const recovered: DeploymentRecord = {
+            ...pending.record,
+            verifiedAt: new Date().toISOString(),
+            maintenanceAuthority: checked.maintenanceAuthority
+          };
+          records.set(token.symbol, recovered);
+          journal = completePendingDeployment(journal, recovered);
+          await saveJournal();
+          console.log(`[recover] ${token.symbol} ${recovered.contractAddress}`);
+        } catch (error) {
+          if (!(error instanceof DeploymentVerificationError)) throw error;
+          await markRegistryStale(outputPath, identity);
+          throw new Error(`${error.message}. Finalized deployment remains pending in the private journal; do not redeploy until its chain outcome is reconciled.`);
+        }
+      }
       for (const token of TOKEN_DEFINITIONS) {
         const prior = records.get(token.symbol);
         if (prior) {
@@ -232,35 +284,48 @@ async function deployAll(): Promise<void> {
           CompiledContract.withVacantWitnesses,
           CompiledContract.withCompiledFileAssets(path)
         );
-        const deployed = await withTimeout(`${token.symbol} deploy`, deployContract(providers as never, {
-          compiledContract: compiled as never,
-          args: [token.name, token.symbol, BigInt(token.decimals), bytes32(token.domainSeparator)]
-        } as never));
+        const artifactSha256 = await hashDirectory(path);
+        journal = beginDeployment(journal, token.symbol, new Date().toISOString());
+        await saveJournal();
+        let deployed;
+        try {
+          deployed = await withTimeout(`${token.symbol} deploy`, deployContract(providers as never, {
+            compiledContract: compiled as never,
+            args: [token.name, token.symbol, BigInt(token.decimals), bytes32(token.domainSeparator)]
+          } as never));
+        } catch (error) {
+          throw new Error(`${token.symbol}: deployment outcome is uncertain and remains marked in the private journal; reconcile the chain before retrying. ${error instanceof Error ? error.message : String(error)}`);
+        }
         const address = deployed.deployTxData.public.contractAddress;
-        const checked = await verifyContract(token, address, providers.publicDataProvider);
         const publicTx = deployed.deployTxData.public;
-        const record: DeploymentRecord = {
+        const provisional: DeploymentRecord = {
           deploymentId: `${token.symbol}:${address}`,
           status: "active",
           contractAddress: address,
-          tokenId: checked.tokenId,
+          tokenId: ledger.rawTokenType(bytes32(token.domainSeparator), address),
           deploymentTransaction: publicTx.txId,
           deployedAt: asDate(publicTx.blockTimestamp),
-          verifiedAt: new Date().toISOString(),
+          verifiedAt: asDate(publicTx.blockTimestamp),
           network: identity,
           compatibility: COMPATIBILITY,
           deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
           confirmation: { blockHeight: String(publicTx.blockHeight), blockHash: publicTx.blockHash },
-          maintenanceAuthority: checked.maintenanceAuthority,
+          maintenanceAuthority: { status: "unknown", address: null },
           artifact: {
             sourceRevision,
             compilerVersion: COMPATIBILITY.compiler,
-            artifactSha256: await hashDirectory(path),
+            artifactSha256,
             openZeppelinRelease: null
           }
         };
+        journal = recordFinalizedDeployment(journal, provisional);
+        await saveJournal();
+        const checked = await verifyContract(token, address, providers.publicDataProvider);
+        if (checked.tokenId !== provisional.tokenId) throw new DeploymentVerificationError(`${token.symbol}: finalized token id mismatch`);
+        const record: DeploymentRecord = { ...provisional, verifiedAt: new Date().toISOString(), maintenanceAuthority: checked.maintenanceAuthority };
         records.set(token.symbol, record);
-        await writeJsonAtomic(journalPath, { schemaVersion: 1, network: identity, compatibility: COMPATIBILITY, deployments: [...records.values()] });
+        journal = completePendingDeployment(journal, record);
+        await saveJournal();
         console.log(`[deploy] ${token.symbol} ${address} ${record.tokenId}`);
       }
       const registry = await publishReadyRegistry(outputPath, {

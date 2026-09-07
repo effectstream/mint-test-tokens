@@ -6,7 +6,8 @@
   "scripts": {
     "deploy": "node --import tsx deploy.ts deploy",
     "verify": "node --import tsx deploy.ts verify",
-    "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck deploy.ts ../../scripts/lib/*.ts",
+    "test:wallet": "node --import tsx mint-wallet-test.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck deploy.ts mint-wallet-test.ts ../../scripts/lib/*.ts",
     "test:receiver": "RECEIVER_PROFILE=v2 node ../../test/receiver-runtime.mjs"
   },
   "dependencies": {

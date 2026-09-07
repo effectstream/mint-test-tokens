@@ -82,14 +82,19 @@
         "network": { "$ref": "#/properties/network" },
         "compatibility": { "$ref": "#/properties/compatibility" },
         "deploymentToolchain": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["runner", "runnerVersion", "walletSdk"],
-          "properties": {
-            "runner": { "type": "string", "minLength": 1 },
-            "runnerVersion": { "type": "string", "minLength": 1 },
-            "walletSdk": { "type": "string", "minLength": 1 }
-          }
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["runner", "runnerVersion", "walletSdk"],
+              "properties": {
+                "runner": { "type": "string", "minLength": 1 },
+                "runnerVersion": { "type": "string", "minLength": 1 },
+                "walletSdk": { "type": "string", "minLength": 1 }
+              }
+            },
+            { "type": "null" }
+          ]
         },
         "confirmation": {
           "type": "object",

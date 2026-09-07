@@ -71,11 +71,13 @@ function validateDeployment(deployment: Record<string, unknown>, symbol: string,
       }
     }
   }
-  if (!isObject(deployment.deploymentToolchain)) {
-    errors.push(`${path}.deploymentToolchain must be an object`);
-  } else {
-    for (const field of ["runner", "runnerVersion", "walletSdk"] as const) {
-      if (!isNonEmptyString(deployment.deploymentToolchain[field])) errors.push(`${path}.deploymentToolchain.${field} must be non-empty`);
+  if (deployment.deploymentToolchain !== null) {
+    if (!isObject(deployment.deploymentToolchain)) {
+      errors.push(`${path}.deploymentToolchain must be an object or null`);
+    } else {
+      for (const field of ["runner", "runnerVersion", "walletSdk"] as const) {
+        if (!isNonEmptyString(deployment.deploymentToolchain[field])) errors.push(`${path}.deploymentToolchain.${field} must be non-empty`);
+      }
     }
   }
   if (!isObject(deployment.confirmation)) {
@@ -181,6 +183,7 @@ export function validateRegistry(value: unknown, expectedNetwork?: NetworkKey): 
       }
       if (deployment.status === "active") {
         active.push(deployment);
+        if (deployment.deploymentToolchain === null) errors.push(`${definition.symbol} active deployment requires deployment toolchain provenance`);
         if (deployment.deploymentId !== token.activeDeploymentId) errors.push(`${definition.symbol} has an unselected active deployment`);
         if (isObject(deployment.network)) {
           if (deployment.network.key !== network.key) errors.push(`${definition.symbol} active deployment network key mismatch`);

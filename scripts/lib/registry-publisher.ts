@@ -56,9 +56,7 @@ export function promoteReadyRegistry(options: {
       .map((item) => ({
         ...item,
         status: "superseded" as const,
-        deploymentToolchain: item.deploymentToolchain ?? (item.compatibility.profile === "v1"
-          ? { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "4.1.1", walletSdk: "1.1.0" }
-          : { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "5.0.0-beta.6", walletSdk: "2.0.0-beta.2" })
+        deploymentToolchain: item.deploymentToolchain ?? null
       }));
     return {
       ...definition,
@@ -96,7 +94,7 @@ export async function publishReadyRegistry(
 export async function markRegistryStale(path: string, network: NetworkIdentity): Promise<TokenRegistry | undefined> {
   return withFileLock(path, async () => {
     const existing = await readRegistry(path);
-    if (!existing || existing.network.key !== network.key || existing.network.stackIdentity !== network.stackIdentity) return existing;
+    if (!existing || existing.network.key !== network.key || existing.status === "stale") return existing;
     const stale: TokenRegistry = {
       ...existing,
       status: "stale",

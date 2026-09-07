@@ -125,6 +125,20 @@ const shieldedMint = await shieldedIssuer.circuits.mint(
   100n,
   bytes(12),
 );
+const explicitlyClaimedShieldedReceive = await receiver.circuits.receiveShieldedTokenFromIssuer(
+  context(
+    "receiveShieldedTokenFromIssuer",
+    receiverAddress,
+    receiverInitial.currentContractState,
+  ),
+  runtime.encodeContractAddress(shieldedIssuerAddress),
+  bytes(16),
+  1n,
+  shieldedMint.result,
+);
+assert.equal(queryContext(explicitlyClaimedShieldedReceive).effects.claimedContractCalls.length, 1);
+assert.equal(queryContext(explicitlyClaimedShieldedReceive).effects.claimedContractCalls[0][1], shieldedIssuerAddress);
+assert.ok(queryContext(explicitlyClaimedShieldedReceive).effects.claimedContractCalls[0][3].length > 0);
 const shieldedReceive = await receiver.circuits.receiveShieldedToken(
   context(
     "receiveShieldedToken",
@@ -246,6 +260,21 @@ const unshieldedMint = await unshieldedIssuer.circuits.mint(
   },
   250n,
 );
+const explicitlyClaimedUnshieldedReceive = await receiver.circuits.receiveUnshieldedTokenFromIssuer(
+  context(
+    "receiveUnshieldedTokenFromIssuer",
+    receiverAddress,
+    receiverInitial.currentContractState,
+  ),
+  runtime.encodeContractAddress(unshieldedIssuerAddress),
+  bytes(17),
+  2n,
+  unshieldedMint.result,
+  250n,
+);
+assert.equal(queryContext(explicitlyClaimedUnshieldedReceive).effects.claimedContractCalls.length, 1);
+assert.equal(queryContext(explicitlyClaimedUnshieldedReceive).effects.claimedContractCalls[0][1], unshieldedIssuerAddress);
+assert.ok(queryContext(explicitlyClaimedUnshieldedReceive).effects.claimedContractCalls[0][3].length > 0);
 const unshieldedReceive = await receiver.circuits.receiveUnshieldedToken(
   context(
     "receiveUnshieldedToken",

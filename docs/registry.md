@@ -53,9 +53,23 @@ node. It uses those values for an isolated stack identity and resume journal,
 then processes the six tokens in canonical order. A prior confirmed contract
 is resumed only after its complete on-chain verifier-key set, immutable
 metadata and derived token ID pass again. A missing or mismatched contract is
-treated as stale and replaced. The final registry is written only after every
+treated as stale and requires an explicit `MN_REDEPLOY_STALE=1` retry after the
+operator confirms a reset or mismatch. A deployment intent is written to the
+private journal before submission. Once a deployment finalizes, its address,
+transaction and confirmation are journaled before post-deployment verification,
+so a restart verifies that exact address instead of deploying a replacement.
+If a deploy call times out before returning its address, the journal keeps an
+uncertain in-flight marker and the next run refuses to submit again. Reconcile
+the node and indexer first; set `MN_CONFIRM_NO_DEPLOYMENT=1` only after proving
+that no deployment finalized. The final registry is written only after every
 token passes, under an exclusive writer lock, with file and directory sync
 before the atomic rename.
+
+If a deployment process is killed, a stale `.lock` file can remain beside the
+registry or private journal. Read the PID stored in the lock, confirm that no
+process with that PID is running, and then remove the lock manually. Never
+remove a lock owned by a live process; the tooling deliberately does not steal
+locks because two writers could otherwise publish conflicting state.
 
 The output is `metadata/metadata.undeployed.json`. It has the same schema as
 the tracked public files and is gitignored. Local services and the website can
