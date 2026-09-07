@@ -1,6 +1,6 @@
 import { TOKEN_DEFINITIONS } from "./tokens.js";
 import { encodeDomainSeparator } from "./domain.js";
-import type { NetworkKey, TokenRegistry } from "./types.js";
+import type { CompatibilitySnapshot, DeploymentRecord, NetworkKey, TokenRegistry } from "./types.js";
 
 export type RegistryValidation =
   | { ok: true; value: TokenRegistry }
@@ -11,6 +11,17 @@ const PROTOCOLS = ["midnight-1.x", "midnight-2.x"] as const;
 const PROFILES = ["v1", "v2"] as const;
 const REGISTRY_STATUSES = ["unavailable", "deploying", "ready", "stale"] as const;
 const DEPLOYMENT_STATUSES = ["active", "superseded"] as const;
+const COMPATIBILITY_FIELDS = [
+  "profile",
+  "compiler",
+  "language",
+  "compactJs",
+  "compactRuntime",
+  "ledger",
+  "onchainRuntime",
+  "midnightJs",
+  "walletSdk"
+] as const;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39,10 +50,51 @@ function validateNetwork(network: Record<string, unknown>, path: string, errors:
   if (!isNullableString(network.stackIdentity)) errors.push(`${path}.stackIdentity must be null or non-empty`);
 }
 
-function validateCompatibility(compatibility: Record<string, unknown>, path: string, errors: string[]): void {
+function compatibilityRecordsEqual(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  return COMPATIBILITY_FIELDS.every((field) => left[field] === right[field]);
+}
+
+export function compatibilitySnapshotsEqual(left: CompatibilitySnapshot, right: CompatibilitySnapshot): boolean {
+  return compatibilityRecordsEqual(
+    left as unknown as Record<string, unknown>,
+    right as unknown as Record<string, unknown>
+  );
+}
+
+export function deploymentSupportsCompatibility(
+  deployment: DeploymentRecord,
+  compatibility: CompatibilitySnapshot,
+  clientArtifact: { sourceRevision: string; compilerVersion: string; artifactSha256: string }
+): boolean {
+  if (compatibilitySnapshotsEqual(deployment.compatibility, compatibility) &&
+      deployment.artifact.sourceRevision === clientArtifact.sourceRevision &&
+      deployment.artifact.compilerVersion === clientArtifact.compilerVersion &&
+      deployment.artifact.artifactSha256 === clientArtifact.artifactSha256) {
+    return true;
+  }
+  return (deployment.compatibilityVerifications ?? []).some((evidence) =>
+    evidence.deploymentId === deployment.deploymentId &&
+    evidence.deploymentArtifactSha256 === deployment.artifact.artifactSha256 &&
+    compatibilitySnapshotsEqual(evidence.compatibility, compatibility) &&
+    evidence.artifact.sourceRevision === clientArtifact.sourceRevision &&
+    evidence.artifact.compilerVersion === clientArtifact.compilerVersion &&
+    evidence.artifact.artifactSha256 === clientArtifact.artifactSha256
+  );
+}
+
+function validateCompatibility(
+  compatibility: Record<string, unknown>,
+  path: string,
+  errors: string[],
+  requireExtended = false
+): void {
   if (!isEnum(compatibility.profile, PROFILES)) errors.push(`${path}.profile is invalid`);
   for (const field of ["compiler", "compactRuntime", "ledger", "midnightJs", "walletSdk"] as const) {
     if (!isNonEmptyString(compatibility[field])) errors.push(`${path}.${field} must be non-empty`);
+  }
+  for (const field of ["language", "compactJs", "onchainRuntime"] as const) {
+    if (requireExtended && !isNonEmptyString(compatibility[field])) errors.push(`${path}.${field} must be non-empty`);
+    if (compatibility[field] !== undefined && !isNonEmptyString(compatibility[field])) errors.push(`${path}.${field} must be non-empty when present`);
   }
 }
 
@@ -106,6 +158,54 @@ function validateDeployment(deployment: Record<string, unknown>, symbol: string,
     if (!isHex(deployment.artifact.artifactSha256, 64)) errors.push(`${path}.artifact.artifactSha256 must be a SHA-256`);
     if (!(deployment.artifact.openZeppelinRelease === null || isNonEmptyString(deployment.artifact.openZeppelinRelease))) {
       errors.push(`${path}.artifact.openZeppelinRelease is invalid`);
+    }
+  }
+  if (deployment.compatibilityVerifications !== undefined) {
+    if (!Array.isArray(deployment.compatibilityVerifications)) {
+      errors.push(`${path}.compatibilityVerifications must be an array when present`);
+    } else {
+      const compatibilityKeys = new Set<string>();
+      for (const [index, evidence] of deployment.compatibilityVerifications.entries()) {
+        const evidencePath = `${path}.compatibilityVerifications[${index}]`;
+        if (!isObject(evidence)) {
+          errors.push(`${evidencePath} must be an object`);
+          continue;
+        }
+        if (!isNonEmptyString(evidence.deploymentId) || evidence.deploymentId !== deployment.deploymentId) {
+          errors.push(`${evidencePath}.deploymentId must match the containing deployment`);
+        }
+        if (!isHex(evidence.deploymentArtifactSha256, 64) ||
+            !isObject(deployment.artifact) ||
+            evidence.deploymentArtifactSha256 !== deployment.artifact.artifactSha256) {
+          errors.push(`${evidencePath}.deploymentArtifactSha256 must match the deployment artifact digest`);
+        }
+        if (!isObject(evidence.compatibility)) {
+          errors.push(`${evidencePath}.compatibility must be an object`);
+        } else {
+          const evidenceCompatibility = evidence.compatibility;
+          validateCompatibility(evidenceCompatibility, `${evidencePath}.compatibility`, errors, true);
+          const key = COMPATIBILITY_FIELDS.map((field) => String(evidenceCompatibility[field])).join("\0");
+          if (compatibilityKeys.has(key)) errors.push(`${path} has duplicate compatibility verification`);
+          compatibilityKeys.add(key);
+          if (isObject(deployment.network) && isEnum(evidence.compatibility.profile, PROFILES)) {
+            const expectedProtocol = evidence.compatibility.profile === "v1" ? "midnight-1.x" : "midnight-2.x";
+            if (deployment.network.protocolFamily !== expectedProtocol) {
+              errors.push(`${evidencePath} compatibility profile does not match the deployment protocol`);
+            }
+          }
+        }
+        if (!isObject(evidence.artifact)) {
+          errors.push(`${evidencePath}.artifact must be an object`);
+        } else {
+          if (!isHex(evidence.artifact.sourceRevision, 40)) errors.push(`${evidencePath}.artifact.sourceRevision must be a git SHA`);
+          if (!isNonEmptyString(evidence.artifact.compilerVersion)) errors.push(`${evidencePath}.artifact.compilerVersion must be non-empty`);
+          if (!isHex(evidence.artifact.artifactSha256, 64)) errors.push(`${evidencePath}.artifact.artifactSha256 must be a SHA-256`);
+          if (isObject(evidence.compatibility) && evidence.artifact.compilerVersion !== evidence.compatibility.compiler) {
+            errors.push(`${evidencePath}.artifact.compilerVersion must match compatibility.compiler`);
+          }
+        }
+        if (!isDate(evidence.verifiedAt)) errors.push(`${evidencePath}.verifiedAt must be a date-time`);
+      }
     }
   }
 }
@@ -198,8 +298,17 @@ export function validateRegistry(value: unknown, expectedNetwork?: NetworkKey): 
           if (deployment.network.protocolFamily !== network.protocolFamily) errors.push(`${definition.symbol} active deployment protocol mismatch`);
           if (deployment.network.stackIdentity !== network.stackIdentity) errors.push(`${definition.symbol} active deployment stack mismatch`);
         }
-        if (isObject(deployment.compatibility) && deployment.compatibility.profile !== compatibility.profile) {
-          errors.push(`${definition.symbol} active deployment compatibility mismatch`);
+        if (isObject(deployment.compatibility)) {
+          const originalMatch = compatibilityRecordsEqual(deployment.compatibility, compatibility);
+          const evidenceMatch = Array.isArray(deployment.compatibilityVerifications) && deployment.compatibilityVerifications.some((entry) =>
+            isObject(entry) &&
+            entry.deploymentId === deployment.deploymentId &&
+            isObject(deployment.artifact) &&
+            entry.deploymentArtifactSha256 === deployment.artifact.artifactSha256 &&
+            isObject(entry.compatibility) &&
+            compatibilityRecordsEqual(entry.compatibility, compatibility)
+          );
+          if (!originalMatch && !evidenceMatch) errors.push(`${definition.symbol} active deployment compatibility mismatch`);
         }
       }
     }

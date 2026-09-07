@@ -9,9 +9,9 @@
   "v2": {
     "status": "prerelease", "networks": ["stagenet", "undeployed"],
     "networkId": "stagenet", "chainId": "midnight_stagenet", "node": "2.0.0-rc.4",
-    "compiler": "0.33.0-rc.2", "language": "0.23", "compactJs": "2.5.5-rc.7",
-    "compactRuntime": "0.18.0-rc.1", "ledger": "1.0.0-rc.3",
-    "midnightJs": "5.0.0-beta.6", "walletSdk": "2.0.0-beta.2",
+    "compiler": "0.34.0", "language": "0.26.0", "compactJs": "2.5.5-rc.8",
+    "compactRuntime": "0.19.0", "ledger": "1.0.0-rc.3", "onchainRuntime": "4.0.0-rc.3",
+    "midnightJs": "5.0.0-beta.7", "walletSdk": "2.0.0-beta.2",
     "proofServer": "9.0.0-rc.5", "indexer": "4.4.0-rc.1", "endpoints": null
   }
 }

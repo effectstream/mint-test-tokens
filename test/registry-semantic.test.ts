@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { validateRegistry } from "../packages/registry/src/semantic.js";
+import { deploymentSupportsCompatibility, validateRegistry } from "../packages/registry/src/semantic.js";
 import { encodeDomainSeparator } from "../packages/registry/src/domain.js";
-import type { CompatibilitySnapshot, NetworkIdentity, TokenRegistry } from "../packages/registry/src/types.js";
+import type {
+  CompatibilitySnapshot,
+  NetworkIdentity,
+  TokenRegistry,
+  VerifiedCompatibilitySnapshot
+} from "../packages/registry/src/types.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
+const expectInvalid = (value: unknown, pattern: RegExp): void => {
+  const result = validateRegistry(value, "undeployed");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.errors.join("\n"), pattern);
+};
 const base = JSON.parse(await readFile(new URL("../metadata/metadata.preview.json", import.meta.url), "utf8")) as TokenRegistry;
 
 const v1Compatibility: CompatibilitySnapshot = {
@@ -18,11 +28,22 @@ const v1Compatibility: CompatibilitySnapshot = {
 };
 const v2Compatibility: CompatibilitySnapshot = {
   profile: "v2",
-  compiler: "0.33.0-rc.2",
-  compactRuntime: "0.17.0-rc.3",
-  ledger: "9.0.0-rc.5",
-  midnightJs: "5.0.0-beta.6",
-  walletSdk: "2.0.0-rc.4"
+  compiler: "0.34.0",
+  compactRuntime: "0.19.0",
+  ledger: "1.0.0-rc.3",
+  midnightJs: "5.0.0-beta.7",
+  walletSdk: "2.0.0-beta.2"
+};
+const alignedV2Compatibility: VerifiedCompatibilitySnapshot = {
+  profile: "v2",
+  compiler: "0.34.0",
+  language: "0.26.0",
+  compactJs: "2.5.5-rc.8",
+  compactRuntime: "0.19.0",
+  ledger: "1.0.0-rc.3",
+  onchainRuntime: "4.0.0-rc.3",
+  midnightJs: "5.0.0-beta.7",
+  walletSdk: "2.0.0-beta.2"
 };
 
 function makeReady(protocol: "v1" | "v2" = "v1"): TokenRegistry {
@@ -101,6 +122,87 @@ test("requires every ready token to select one verified active deployment", () =
   assert.equal(validateRegistry(ready, "undeployed").ok, false);
   ready.tokens[0]!.deployments[0]!.verifiedAt = "not-a-date";
   assert.equal(validateRegistry(ready, "undeployed").ok, false);
+});
+
+test("accepts additive client compatibility evidence while preserving deployment provenance", () => {
+  const ready = makeReady("v2");
+  ready.compatibility = clone(alignedV2Compatibility);
+  for (const token of ready.tokens) {
+    const deployment = token.deployments[0]!;
+    deployment.compatibility = {
+      profile: "v2",
+      compiler: "0.33.0-rc.2",
+      compactRuntime: "0.18.0-rc.1",
+      ledger: "1.0.0-rc.3",
+      midnightJs: "5.0.0-beta.6",
+      walletSdk: "2.0.0-beta.2"
+    };
+    deployment.compatibilityVerifications = [{
+      deploymentId: deployment.deploymentId,
+      deploymentArtifactSha256: deployment.artifact.artifactSha256,
+      compatibility: clone(alignedV2Compatibility),
+      artifact: {
+        sourceRevision: "c".repeat(40),
+        compilerVersion: alignedV2Compatibility.compiler,
+        artifactSha256: "d".repeat(64)
+      },
+      verifiedAt: "2026-09-07T11:00:00.000Z"
+    }];
+  }
+  assert.equal(validateRegistry(ready, "undeployed").ok, true);
+  const selected = ready.tokens[0]!.deployments[0]!;
+  const evidenceArtifact = selected.compatibilityVerifications![0]!.artifact;
+  assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, evidenceArtifact), true);
+  assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, {
+    ...evidenceArtifact,
+    sourceRevision: "e".repeat(40)
+  }), false);
+  assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, {
+    ...evidenceArtifact,
+    artifactSha256: "f".repeat(64)
+  }), false);
+
+  const withoutEvidence = clone(ready);
+  delete withoutEvidence.tokens[0]!.deployments[0]!.compatibilityVerifications;
+  expectInvalid(withoutEvidence, /active deployment compatibility mismatch/);
+
+  const wrongDeployment = clone(ready);
+  wrongDeployment.tokens[0]!.deployments[0]!.compatibilityVerifications![0]!.deploymentId = "wrong";
+  expectInvalid(wrongDeployment, /deploymentId must match/);
+
+  const wrongDeploymentDigest = clone(ready);
+  wrongDeploymentDigest.tokens[0]!.deployments[0]!.compatibilityVerifications![0]!.deploymentArtifactSha256 = "e".repeat(64);
+  expectInvalid(wrongDeploymentDigest, /deployment artifact digest/);
+
+  const wrongCompiler = clone(ready);
+  wrongCompiler.tokens[0]!.deployments[0]!.compatibilityVerifications![0]!.artifact.compilerVersion = "0.33.0";
+  expectInvalid(wrongCompiler, /must match compatibility.compiler/);
+
+  const partialTuple = clone(ready);
+  const partialCompatibility = partialTuple.tokens[0]!.deployments[0]!.compatibilityVerifications![0]!.compatibility as unknown as { compactJs?: string };
+  delete partialCompatibility.compactJs;
+  expectInvalid(partialTuple, /compactJs must be non-empty/);
+
+  const duplicate = clone(ready);
+  duplicate.tokens[0]!.deployments[0]!.compatibilityVerifications!.push(
+    clone(duplicate.tokens[0]!.deployments[0]!.compatibilityVerifications![0]!)
+  );
+  expectInvalid(duplicate, /duplicate compatibility verification/);
+});
+
+test("accepts an exact-current deployment without additive evidence and rejects the wrong client artifact", () => {
+  const ready = makeReady("v2");
+  const deployment = ready.tokens[0]!.deployments[0]!;
+  const clientArtifact = {
+    sourceRevision: deployment.artifact.sourceRevision,
+    compilerVersion: deployment.artifact.compilerVersion,
+    artifactSha256: deployment.artifact.artifactSha256
+  };
+  assert.equal(deploymentSupportsCompatibility(deployment, ready.compatibility, clientArtifact), true);
+  assert.equal(deploymentSupportsCompatibility(deployment, ready.compatibility, {
+    ...clientArtifact,
+    artifactSha256: "f".repeat(64)
+  }), false);
 });
 
 test("preserves a superseded v1 record when the current active context is v2", () => {

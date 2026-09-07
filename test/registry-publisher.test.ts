@@ -23,14 +23,23 @@ import {
   readyDeploymentsForNetwork
 } from "../scripts/lib/registry-publisher.js";
 import {
+  assertClientCompatibilityVerification,
   assertDeploymentProvenance,
+  assertPinnedDeploymentArtifact,
+  hashGitDirectory,
   resolveReproducibleSourceRevision,
   sourcePathsForProfile
 } from "../scripts/lib/deployment-provenance.js";
 import { waitForFundedDeploymentWallet, type DeploymentWalletState } from "../scripts/lib/deployment-wallet.js";
 import { validateMasterSeedHex } from "../scripts/lib/wallet-seed.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
-import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
+import type {
+  CompatibilitySnapshot,
+  DeploymentRecord,
+  NetworkIdentity,
+  TokenSymbol,
+  VerifiedCompatibilitySnapshot
+} from "../packages/registry/src/types.js";
 
 const network: NetworkIdentity = {
   key: "undeployed",
@@ -194,6 +203,59 @@ test("revision changes with canonical identities and changed-stack stale marking
     assert.equal(JSON.parse(await readFile(path, "utf8")).status, "stale");
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("compatibility evidence is deployment-bound and changes the registry revision", () => {
+  const original = records("compatibility");
+  const record = original.get("twBTC")!;
+  const aligned: VerifiedCompatibilitySnapshot = {
+    profile: "v1",
+    compiler: "0.34.0",
+    language: "0.26.0",
+    compactJs: "2.5.5-rc.8",
+    compactRuntime: "0.19.0",
+    ledger: "1.0.0-rc.3",
+    onchainRuntime: "4.0.0-rc.3",
+    midnightJs: "5.0.0-beta.7",
+    walletSdk: "2.0.0-beta.2"
+  };
+  const evidence = {
+    deploymentId: record.deploymentId,
+    deploymentArtifactSha256: record.artifact.artifactSha256,
+    compatibility: aligned,
+    artifact: {
+      sourceRevision: "c".repeat(40),
+      compilerVersion: aligned.compiler,
+      artifactSha256: "d".repeat(64)
+    },
+    verifiedAt: "2026-09-07T11:00:00.000Z"
+  };
+  assert.doesNotThrow(() => assertClientCompatibilityVerification(record, evidence, {
+    compatibility: aligned,
+    sourceRevision: evidence.artifact.sourceRevision,
+    compilerVersion: evidence.artifact.compilerVersion,
+    artifactSha256: evidence.artifact.artifactSha256
+  }));
+  const upgraded = new Map(original);
+  upgraded.set("twBTC", { ...record, compatibilityVerifications: [evidence] });
+  assert.notEqual(deploymentRevision(network, original), deploymentRevision(network, upgraded));
+
+  const mutations = [
+    { ...evidence, deploymentId: "wrong" },
+    { ...evidence, deploymentArtifactSha256: "e".repeat(64) },
+    { ...evidence, compatibility: { ...aligned, compactRuntime: "wrong" } },
+    { ...evidence, artifact: { ...evidence.artifact, sourceRevision: "f".repeat(40) } },
+    { ...evidence, artifact: { ...evidence.artifact, compilerVersion: "wrong" } },
+    { ...evidence, artifact: { ...evidence.artifact, artifactSha256: "0".repeat(64) } }
+  ];
+  for (const mutation of mutations) {
+    assert.throws(() => assertClientCompatibilityVerification(record, mutation, {
+      compatibility: aligned,
+      sourceRevision: evidence.artifact.sourceRevision,
+      compilerVersion: evidence.artifact.compilerVersion,
+      artifactSha256: evidence.artifact.artifactSha256
+    }), /compatibility verification mismatch/);
   }
 });
 
@@ -373,8 +435,13 @@ test("requires source revision to resolve and match tracked source/artifact byte
   const directory = await mkdtemp(join(tmpdir(), "mint-source-revision-"));
   try {
     await mkdir(join(directory, "managed"));
+    await mkdir(join(directory, "managed", "compiler"));
     await writeFile(join(directory, "issuer.compact"), "export circuit mint(): [] {}\n");
     await writeFile(join(directory, "managed", "artifact"), "proof-bytes\n");
+    await writeFile(join(directory, "managed", "compiler", "contract-info.json"), JSON.stringify({
+      "compiler-version": "0.31.1",
+      "runtime-version": compatibility.compactRuntime
+    }));
     execFileSync("git", ["init", "-q"], { cwd: directory });
     execFileSync("git", ["config", "user.email", "tests@effectstream.invalid"], { cwd: directory });
     execFileSync("git", ["config", "user.name", "registry test"], { cwd: directory });
@@ -382,6 +449,20 @@ test("requires source revision to resolve and match tracked source/artifact byte
     execFileSync("git", ["commit", "-qm", "fixture"], { cwd: directory });
     const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf8" }).trim();
     assert.equal(resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), revision);
+    const pinnedRecord = {
+      ...records("pinned").get("twBTC")!,
+      artifact: {
+        sourceRevision: revision,
+        compilerVersion: "0.31.1",
+        artifactSha256: hashGitDirectory(directory, revision, "managed"),
+        openZeppelinRelease: null
+      }
+    };
+    assert.doesNotThrow(() => assertPinnedDeploymentArtifact(directory, pinnedRecord, "managed", "issuer.compact"));
+    assert.throws(() => assertPinnedDeploymentArtifact(directory, {
+      ...pinnedRecord,
+      artifact: { ...pinnedRecord.artifact, artifactSha256: "0".repeat(64) }
+    }, "managed", "issuer.compact"), /pinned artifact digest/);
     assert.throws(() => resolveReproducibleSourceRevision(directory, "0".repeat(40), ["issuer.compact", "managed"]), /does not resolve/);
     await writeFile(join(directory, "issuer.compact"), "changed\n");
     assert.throws(() => resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), /do not match/);

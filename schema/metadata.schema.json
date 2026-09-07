@@ -30,8 +30,11 @@
       "properties": {
         "profile": { "enum": ["v1", "v2"] },
         "compiler": { "type": "string", "minLength": 1 },
+        "language": { "type": "string", "minLength": 1 },
+        "compactJs": { "type": "string", "minLength": 1 },
         "compactRuntime": { "type": "string", "minLength": 1 },
         "ledger": { "type": "string", "minLength": 1 },
+        "onchainRuntime": { "type": "string", "minLength": 1 },
         "midnightJs": { "type": "string", "minLength": 1 },
         "walletSdk": { "type": "string", "minLength": 1 }
       }
@@ -129,7 +132,37 @@
             "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
             "openZeppelinRelease": { "type": ["string", "null"] }
           }
+        },
+        "compatibilityVerifications": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/clientCompatibilityVerification" }
         }
+      }
+    },
+    "clientCompatibilityVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deploymentId", "deploymentArtifactSha256", "compatibility", "artifact", "verifiedAt"],
+      "properties": {
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "deploymentArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "compatibility": {
+          "allOf": [
+            { "$ref": "#/properties/compatibility" },
+            { "type": "object", "required": ["language", "compactJs", "onchainRuntime"] }
+          ]
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceRevision", "compilerVersion", "artifactSha256"],
+          "properties": {
+            "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "compilerVersion": { "type": "string", "minLength": 1 },
+            "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "verifiedAt": { "type": "string", "format": "date-time" }
       }
     }
   }
