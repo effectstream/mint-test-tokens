@@ -12,7 +12,7 @@
     "deploy:v1": "node --import tsx scripts/v1-deploy.ts deploy",
     "verify:v1": "node --import tsx scripts/v1-deploy.ts verify",
     "test:wallet:v1": "node --import tsx scripts/v1-mint-wallet-test.ts",
-    "typecheck:tools": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck scripts/v1-deploy.ts scripts/v1-mint-wallet-test.ts scripts/lib/*.ts test/*.ts",
+    "typecheck:tools": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck scripts/v1-deploy.ts scripts/v1-mint-wallet-test.ts scripts/lib/*.ts test/registry-*.test.ts test/receiver-v1-chain.ts test/receiver-v1-unshielded-chain.ts",
     "test:registry": "node --import tsx --test test/registry-semantic.test.ts test/registry-publisher.test.ts",
     "test:receiver:v1": "RECEIVER_PROFILE=v1 node test/receiver-runtime.mjs",
     "clean": "tsc -b --clean"

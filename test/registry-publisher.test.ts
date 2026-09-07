@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,7 +11,17 @@ import {
   recordFinalizedDeployment,
   type DeploymentJournal
 } from "../scripts/lib/deployment-journal.js";
-import { deploymentRevision, markRegistryStale, publishReadyRegistry } from "../scripts/lib/registry-publisher.js";
+import {
+  deploymentIdentity,
+  deploymentRevision,
+  markRegistryStale,
+  mergeResumeDeployments,
+  metadataOutputPath,
+  promoteReadyRegistry,
+  publishReadyRegistry,
+  readyDeploymentsForNetwork
+} from "../scripts/lib/registry-publisher.js";
+import { assertDeploymentProvenance, resolveReproducibleSourceRevision } from "../scripts/lib/deployment-provenance.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
 import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
 
@@ -191,4 +202,132 @@ test("keeps a finalized deployment pending until verification completes", () => 
   journal = completePendingDeployment(journal, { ...record, verifiedAt: "2026-09-07T10:05:00.000Z" });
   assert.equal(journal.pendingDeployment, undefined);
   assert.equal(journal.deployments[0]?.contractAddress, record.contractAddress);
+});
+
+test("isolates configured metadata directories and rejects concurrent workflows for one output", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "mint-output-"));
+  const first = metadataOutputPath("/repo", "undeployed", join(directory, "stack-one"));
+  const second = metadataOutputPath("/repo", "undeployed", join(directory, "stack-two"));
+  assert.notEqual(first, second);
+  let release!: () => void;
+  const held = withFileLock(`${first}.deployment-workflow`, () => new Promise<void>((resolve) => { release = resolve; }));
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await assert.rejects(withFileLock(`${first}.deployment-workflow`, async () => undefined), RegistryLockedError);
+    await withFileLock(`${second}.deployment-workflow`, async () => undefined);
+  } finally {
+    release?.();
+    await held.catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("recovers deleted or partial journals from a valid same-stack ready registry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "mint-recovery-"));
+  const path = join(directory, "metadata.undeployed.json");
+  try {
+    const canonical = await publishReadyRegistry(path, {
+      network,
+      compatibility,
+      deployments: records("canonical"),
+      revision: "canonical",
+      generatedAt: "2026-09-07T10:02:00.000Z"
+    });
+    const recovered = readyDeploymentsForNetwork(canonical, network);
+    assert.equal(recovered.size, 6);
+    assert.deepEqual(mergeResumeDeployments([], recovered), recovered);
+    const partial = [records("journal-old").get("twBTC")!];
+    const repaired = mergeResumeDeployments(partial, recovered);
+    assert.equal(repaired.size, 6);
+    assert.equal(repaired.get("twBTC")?.deploymentId, recovered.get("twBTC")?.deploymentId);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("preserves same-address deployment history from a different stack", () => {
+  const oldRecords = records("old-stack");
+  const oldRegistry = promoteReadyRegistry({
+    network,
+    compatibility,
+    deployments: oldRecords,
+    revision: "old-stack",
+    generatedAt: "2026-09-07T10:02:00.000Z"
+  });
+  const newNetwork = { ...network, stackIdentity: "v1:different-genesis:runtime" };
+  const replacement = new Map([...oldRecords].map(([symbol, record]) => [symbol, {
+    ...record,
+    deploymentId: deploymentIdentity(symbol, newNetwork, record.contractAddress, `new-${record.deploymentTransaction}`),
+    deploymentTransaction: `aa${record.deploymentTransaction}`,
+    network: newNetwork
+  }]));
+  const promoted = promoteReadyRegistry({
+    existing: oldRegistry,
+    network: newNetwork,
+    compatibility,
+    deployments: replacement,
+    revision: "new-stack",
+    generatedAt: "2026-09-07T10:03:00.000Z"
+  });
+  for (const token of promoted.tokens) {
+    assert.equal(token.deployments.length, 2);
+    assert.equal(token.deployments[0]?.network.stackIdentity, network.stackIdentity);
+    assert.equal(token.deployments[0]?.status, "superseded");
+    assert.equal(token.deployments[1]?.network.stackIdentity, newNetwork.stackIdentity);
+  }
+});
+
+test("rejects every mutated independently checkable provenance class", () => {
+  const record = records("provenance").get("twBTC")!;
+  const expected = {
+    network,
+    compatibility,
+    deploymentToolchain: record.deploymentToolchain!,
+    sourceRevision: record.artifact.sourceRevision,
+    compilerVersion: record.artifact.compilerVersion,
+    artifactSha256: record.artifact.artifactSha256,
+    maintenanceAuthority: record.maintenanceAuthority,
+    chainDeployment: {
+      transactionHash: record.deploymentTransaction,
+      blockHeight: record.confirmation.blockHeight,
+      blockHash: record.confirmation.blockHash
+    }
+  };
+  assert.doesNotThrow(() => assertDeploymentProvenance(record, expected));
+  const mutations: DeploymentRecord[] = [
+    { ...record, network: { ...record.network, chainId: "wrong" } },
+    { ...record, compatibility: { ...record.compatibility, ledger: "wrong" } },
+    { ...record, deploymentToolchain: { ...record.deploymentToolchain!, runnerVersion: "wrong" } },
+    { ...record, artifact: { ...record.artifact, sourceRevision: "c".repeat(40) } },
+    { ...record, artifact: { ...record.artifact, compilerVersion: "wrong" } },
+    { ...record, artifact: { ...record.artifact, artifactSha256: "d".repeat(64) } },
+    { ...record, maintenanceAuthority: { status: "retained", address: "authority" } },
+    { ...record, deploymentTransaction: "ff" },
+    { ...record, confirmation: { ...record.confirmation, blockHeight: "13" } },
+    { ...record, confirmation: { ...record.confirmation, blockHash: "wrong" } }
+  ];
+  for (const mutation of mutations) {
+    assert.throws(() => assertDeploymentProvenance(mutation, expected), /provenance mismatch/);
+  }
+});
+
+test("requires source revision to resolve and match tracked source/artifact bytes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "mint-source-revision-"));
+  try {
+    await mkdir(join(directory, "managed"));
+    await writeFile(join(directory, "issuer.compact"), "export circuit mint(): [] {}\n");
+    await writeFile(join(directory, "managed", "artifact"), "proof-bytes\n");
+    execFileSync("git", ["init", "-q"], { cwd: directory });
+    execFileSync("git", ["config", "user.email", "tests@effectstream.invalid"], { cwd: directory });
+    execFileSync("git", ["config", "user.name", "registry test"], { cwd: directory });
+    execFileSync("git", ["add", "."], { cwd: directory });
+    execFileSync("git", ["commit", "-qm", "fixture"], { cwd: directory });
+    const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf8" }).trim();
+    assert.equal(resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), revision);
+    assert.throws(() => resolveReproducibleSourceRevision(directory, "0".repeat(40), ["issuer.compact", "managed"]), /does not resolve/);
+    await writeFile(join(directory, "issuer.compact"), "changed\n");
+    assert.throws(() => resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), /do not match/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

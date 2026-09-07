@@ -39,13 +39,13 @@ const waitSynced = async (wallet: MidnightWalletProvider) => firstValueFrom(wall
   filter((state) => state.isSynced),
   timeout({ first: TIMEOUT_MS })
 ));
-const withTimeout = async <T>(label: string, operation: Promise<T>): Promise<T> => {
+const withTimeout = async <T>(label: string, operation: Promise<T>, timeoutMs = TIMEOUT_MS): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
       })
     ]);
   } finally {
@@ -77,6 +77,7 @@ const [deployer, recipient] = await Promise.all([
 ]);
 await Promise.all([deployer.start(true), recipient.start(false)]);
 
+let operationError: unknown;
 try {
   await Promise.all([waitSynced(deployer), waitSynced(recipient)]);
   const coinPublicKey = recipient.getCoinPublicKey();
@@ -127,6 +128,10 @@ try {
       timeout({ first: TIMEOUT_MS })
     ));
     console.log(`[mint-wallet] ${definition.symbol} amount=${amount} tx=${finalized.public.txId} discovered=true`);
+    if (process.env.MN_SKIP_RECIPIENT_SPEND === "1") {
+      console.log(`[spend-wallet] ${definition.symbol} skipped=true`);
+      continue;
+    }
 
     const recipientAfterMint = (definition.privacy === "shielded" ? stateAfterMint.shielded.balances : stateAfterMint.unshielded.balances)[active.tokenId] ?? 0n;
     const returnStateBefore = await waitSynced(deployer);
@@ -154,6 +159,17 @@ try {
       )).catch((error) => { throw new Error(`${definition.symbol} return-wallet balance did not synchronize: ${error instanceof Error ? error.message : String(error)}`); });
     console.log(`[spend-wallet] ${definition.symbol} amount=${amount} tx=${spendTxId} recipientSpent=true`);
   }
+} catch (error) {
+  operationError = error;
+  throw error;
 } finally {
-  await Promise.all([deployer.stop(), recipient.stop()]);
+  const stopped = await Promise.allSettled([
+    withTimeout("deployer wallet stop", deployer.stop(), 10_000),
+    withTimeout("recipient wallet stop", recipient.stop(), 10_000)
+  ]);
+  const failure = stopped.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure && operationError === undefined) throw failure.reason;
+  if (failure) {
+    console.error(`[wallet-stop] cleanup failed after the operation error: ${failure.reason instanceof Error ? failure.reason.message : String(failure.reason)}`);
+  }
 }

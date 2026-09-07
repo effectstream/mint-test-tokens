@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { resolve } from "node:path";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
 import * as ledger from "@midnightntwrk/ledger-v9";
 import { deployContract } from "@midnight-ntwrk/midnight-js-contracts";
@@ -13,6 +12,7 @@ import { NetworkId } from "@midnightntwrk/wallet-sdk";
 import pino from "pino";
 import * as Shielded from "./managed/shielded/contract/index.js";
 import * as Unshielded from "./managed/unshielded/contract/index.js";
+import { encodeDomainSeparator } from "../../packages/registry/src/domain.js";
 import { TOKEN_DEFINITIONS } from "../../packages/registry/src/tokens.js";
 import { validateRegistry } from "../../packages/registry/src/semantic.js";
 import type {
@@ -32,8 +32,24 @@ import {
   recordFinalizedDeployment,
   type DeploymentJournal
 } from "../../scripts/lib/deployment-journal.js";
+import {
+  assertDeploymentProvenance,
+  hashDirectory,
+  queryChainDeployment,
+  resolveReproducibleSourceRevision,
+  verifyEmbeddedCompilerMetadata
+} from "../../scripts/lib/deployment-provenance.js";
 import { endpointConfig, rpc } from "../../scripts/lib/network-config.js";
-import { deploymentRevision, markRegistryStale, publishReadyRegistry, readRegistry } from "../../scripts/lib/registry-publisher.js";
+import {
+  deploymentIdentity,
+  deploymentRevision,
+  markRegistryStale,
+  mergeResumeDeployments,
+  metadataOutputPath,
+  publishReadyRegistry,
+  readRegistry,
+  readyDeploymentsForNetwork
+} from "../../scripts/lib/registry-publisher.js";
 
 const COMPATIBILITY: CompatibilitySnapshot = {
   profile: "v2",
@@ -44,6 +60,13 @@ const COMPATIBILITY: CompatibilitySnapshot = {
   walletSdk: "2.0.0-beta.2"
 };
 const DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "5.0.0-beta.6", walletSdk: "2.0.0-beta.2" } as const;
+const EMBEDDED_COMPILER_VERSION = "0.33.0";
+const SOURCE_PATHS = [
+  "contracts/v2/shielded.compact",
+  "contracts/v2/unshielded.compact",
+  "contracts/v2/managed/shielded",
+  "contracts/v2/managed/unshielded"
+] as const;
 const TIMEOUT_MS = Number(process.env.MN_TIMEOUT_MS ?? 180_000);
 const command = process.argv[2] ?? "deploy";
 const rawNetwork = process.env.MN_NETWORK?.trim() ?? "undeployed";
@@ -53,7 +76,7 @@ if (!(["stagenet", "undeployed"] as string[]).includes(rawNetwork)) {
 const networkKey = rawNetwork as NetworkKey;
 const endpoints = endpointConfig(networkKey);
 const root = resolve(new URL("../..", import.meta.url).pathname);
-const outputPath = resolve(root, "metadata", `metadata.${networkKey}.json`);
+const outputPath = metadataOutputPath(root, networkKey, process.env.MN_METADATA_OUTPUT_DIR);
 
 class DeploymentVerificationError extends Error {}
 class MissingContractError extends DeploymentVerificationError {}
@@ -72,36 +95,9 @@ const withTimeout = async <T>(label: string, operation: Promise<T>): Promise<T> 
   }
 };
 
-const bytes32 = (text: string): Uint8Array => {
-  const encoded = new TextEncoder().encode(text);
-  if (encoded.length > 32) throw new Error(`Domain exceeds 32 bytes: ${text}`);
-  const result = new Uint8Array(32);
-  result.set(encoded);
-  return result;
-};
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 const asDate = (timestamp: number): string => new Date(timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp).toISOString();
-
-async function hashDirectory(directory: string): Promise<string> {
-  const files: string[] = [];
-  const visit = async (path: string): Promise<void> => {
-    for (const entry of await readdir(path, { withFileTypes: true })) {
-      const child = resolve(path, entry.name);
-      if (entry.isDirectory()) await visit(child);
-      else if (entry.isFile()) files.push(child);
-    }
-  };
-  await visit(directory);
-  const hash = createHash("sha256");
-  for (const path of files.sort()) {
-    hash.update(relative(directory, path));
-    hash.update("\0");
-    hash.update(await readFile(path));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
 
 async function stackIdentity(): Promise<NetworkIdentity> {
   const [chainId, runtimeVersion, genesisHash] = await withTimeout("node identity", Promise.all([
@@ -126,8 +122,13 @@ const artifactPath = (privacy: "shielded" | "unshielded") => resolve(root, "cont
 async function verifyContract(
   token: (typeof TOKEN_DEFINITIONS)[number],
   contractAddress: string,
+  confirmation: DeploymentRecord["confirmation"],
   publicData: Pick<PublicDataProvider, "queryContractState"> = indexerPublicDataProvider(endpoints.indexer, endpoints.indexerWS)
-): Promise<{ tokenId: string; maintenanceAuthority: { status: MaintenanceAuthorityStatus; address: string | null } }> {
+): Promise<{
+  tokenId: string;
+  maintenanceAuthority: { status: MaintenanceAuthorityStatus; address: string | null };
+  chainDeployment: Awaited<ReturnType<typeof queryChainDeployment>>;
+}> {
   const state = await withTimeout(`${token.symbol} state query`, publicData.queryContractState(contractAddress));
   if (!state) throw new MissingContractError(`${token.symbol}: no contract state at ${contractAddress}`);
   const localKeyDirectory = resolve(artifactPath(token.privacy), "keys");
@@ -141,16 +142,21 @@ async function verifyContract(
   }
   const contractModule = moduleFor(token.privacy);
   const metadata = contractModule.ledger(state.data);
-  const domain = bytes32(token.domainSeparator);
+  const domain = encodeDomainSeparator(token.domainSeparator);
   if (metadata._name !== token.name || metadata._symbol !== token.symbol || metadata._decimals !== BigInt(token.decimals) || !sameBytes(metadata._domain, domain)) {
     throw new DeploymentVerificationError(`${token.symbol}: immutable on-chain metadata mismatch`);
   }
   const authority = state.maintenanceAuthority;
   const renounced = authority.committee.length === 0 && authority.threshold > 0;
   const address = renounced ? null : String(authority.committee[0] ?? "");
+  const chainDeployment = await withTimeout(
+    `${token.symbol} deployment evidence`,
+    queryChainDeployment(endpoints.indexer, contractAddress, confirmation.blockHeight)
+  );
   return {
     tokenId: ledger.rawTokenType(domain, contractAddress),
-    maintenanceAuthority: { status: renounced ? "renounced" : address ? "retained" : "unknown", address: address || null }
+    maintenanceAuthority: { status: renounced ? "renounced" : address ? "retained" : "unknown", address: address || null },
+    chainDeployment
   };
 }
 
@@ -167,10 +173,24 @@ async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol,
     const record = token.deployments.find((item) => item.deploymentId === token.activeDeploymentId && item.status === "active");
     if (!record) throw new Error(`${token.symbol}: missing selected active deployment`);
     const expected = TOKEN_DEFINITIONS.find((item) => item.symbol === token.symbol)!;
-    const actual = await verifyContract(expected, record.contractAddress);
+    const path = artifactPath(expected.privacy);
+    const sourceRevision = resolveReproducibleSourceRevision(root, record.artifact.sourceRevision, SOURCE_PATHS);
+    const artifactSha256 = await hashDirectory(path);
+    await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
+    const actual = await verifyContract(expected, record.contractAddress, record.confirmation);
     if (actual.tokenId !== record.tokenId) throw new Error(`${token.symbol}: recorded token id mismatch`);
-    verified.set(token.symbol, { ...record, verifiedAt: new Date().toISOString(), maintenanceAuthority: actual.maintenanceAuthority });
-    console.log(`[verify] ${token.symbol} ${record.contractAddress} ${record.tokenId}`);
+    assertDeploymentProvenance(record, {
+      network: currentNetwork,
+      compatibility: COMPATIBILITY,
+      deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+      sourceRevision,
+      compilerVersion: COMPATIBILITY.compiler,
+      artifactSha256,
+      maintenanceAuthority: actual.maintenanceAuthority,
+      chainDeployment: actual.chainDeployment
+    });
+    verified.set(token.symbol, { ...record, verifiedAt: new Date().toISOString() });
+    console.log(`[verify] ${token.symbol} ${record.contractAddress} ${record.tokenId} onchain+artifact+source+confirmation=verified declared-toolchain=matches-release-config`);
   }
   return verified;
 }
@@ -187,10 +207,16 @@ async function deployAll(): Promise<void> {
        previousRegistry.network.chainId !== identity.chainId ||
        previousRegistry.network.stackIdentity !== identity.stackIdentity)) {
     await markRegistryStale(outputPath, identity);
+    if (process.env.MN_REDEPLOY_STALE !== "1") {
+      throw new Error(`Registry at ${outputPath} was marked stale after a chain/runtime/genesis change. Confirm the reset, then rerun with MN_REDEPLOY_STALE=1.`);
+    }
   }
-  const sourceRevision = process.env.SOURCE_REVISION?.trim() || execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  if (!/^[0-9a-f]{40}$/.test(sourceRevision)) throw new Error("SOURCE_REVISION must be a full git SHA");
-  const journalPath = resolve(root, ".local", "deployments", `v2-${networkKey}-${createHash("sha256").update(identity.stackIdentity!).digest("hex")}.json`);
+  if (previousRegistry?.status === "stale" && previousRegistry.network.key === identity.key && process.env.MN_REDEPLOY_STALE !== "1") {
+    throw new Error(`Registry at ${outputPath} is stale. Reconcile the recorded deployment, then rerun with MN_REDEPLOY_STALE=1 only when replacement is intended.`);
+  }
+  const sourceRevision = resolveReproducibleSourceRevision(root, process.env.SOURCE_REVISION, SOURCE_PATHS);
+  const workflowIdentity = createHash("sha256").update(`${outputPath}\0${identity.stackIdentity}`).digest("hex");
+  const journalPath = resolve(root, ".local", "deployments", `v2-${networkKey}-${workflowIdentity}.json`);
   const walletNetworkId = networkKey === "stagenet" ? NetworkId.NetworkId.StageNet : NetworkId.NetworkId.Undeployed;
   setNetworkId(endpoints.networkId);
   const logger = pino({ level: "silent" });
@@ -208,11 +234,13 @@ async function deployAll(): Promise<void> {
   try {
     await withFileLock(journalPath, async () => {
       const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
+      const canonicalRecords = readyDeploymentsForNetwork(previousRegistry, identity);
+      const recoveredRecords = mergeResumeDeployments(stored?.deployments ?? [], canonicalRecords);
       let journal: DeploymentJournal = {
         schemaVersion: 1,
         network: identity,
         compatibility: COMPATIBILITY,
-        deployments: stored?.deployments ?? [],
+        deployments: [...recoveredRecords.values()],
         ...(stored?.inFlightDeployment ? { inFlightDeployment: stored.inFlightDeployment } : {}),
         ...(stored?.pendingDeployment ? { pendingDeployment: stored.pendingDeployment } : {})
       };
@@ -230,13 +258,30 @@ async function deployAll(): Promise<void> {
         const token = TOKEN_DEFINITIONS.find((item) => item.symbol === pending.symbol);
         if (!token) throw new Error(`Unknown pending deployment symbol ${pending.symbol}`);
         try {
-          const checked = await verifyContract(token, pending.record.contractAddress);
+          const path = artifactPath(token.privacy);
+          const pendingSourceRevision = resolveReproducibleSourceRevision(root, pending.record.artifact.sourceRevision, SOURCE_PATHS);
+          const artifactSha256 = await hashDirectory(path);
+          await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
+          const checked = await verifyContract(token, pending.record.contractAddress, pending.record.confirmation);
           if (checked.tokenId !== pending.record.tokenId) throw new DeploymentVerificationError(`${token.symbol}: pending token id mismatch`);
           const recovered: DeploymentRecord = {
             ...pending.record,
+            deploymentId: deploymentIdentity(token.symbol, identity, pending.record.contractAddress, checked.chainDeployment.transactionHash),
+            deploymentTransaction: checked.chainDeployment.transactionHash,
+            confirmation: { blockHeight: checked.chainDeployment.blockHeight, blockHash: checked.chainDeployment.blockHash },
             verifiedAt: new Date().toISOString(),
             maintenanceAuthority: checked.maintenanceAuthority
           };
+          assertDeploymentProvenance(recovered, {
+            network: identity,
+            compatibility: COMPATIBILITY,
+            deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+            sourceRevision: pendingSourceRevision,
+            compilerVersion: COMPATIBILITY.compiler,
+            artifactSha256,
+            maintenanceAuthority: checked.maintenanceAuthority,
+            chainDeployment: checked.chainDeployment
+          });
           records.set(token.symbol, recovered);
           journal = completePendingDeployment(journal, recovered);
           await saveJournal();
@@ -251,9 +296,31 @@ async function deployAll(): Promise<void> {
         const prior = records.get(token.symbol);
         if (prior) {
           try {
-            const checked = await verifyContract(token, prior.contractAddress);
+            const path = artifactPath(token.privacy);
+            const priorSourceRevision = resolveReproducibleSourceRevision(root, prior.artifact.sourceRevision, SOURCE_PATHS);
+            const artifactSha256 = await hashDirectory(path);
+            await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
+            const checked = await verifyContract(token, prior.contractAddress, prior.confirmation);
             if (checked.tokenId !== prior.tokenId) throw new Error("token id changed");
-            records.set(token.symbol, { ...prior, compatibility: COMPATIBILITY, deploymentToolchain: DEPLOYMENT_TOOLCHAIN, verifiedAt: new Date().toISOString(), maintenanceAuthority: checked.maintenanceAuthority });
+            const refreshed: DeploymentRecord = {
+              ...prior,
+              deploymentId: deploymentIdentity(token.symbol, identity, prior.contractAddress, checked.chainDeployment.transactionHash),
+              deploymentTransaction: checked.chainDeployment.transactionHash,
+              confirmation: { blockHeight: checked.chainDeployment.blockHeight, blockHash: checked.chainDeployment.blockHash },
+              verifiedAt: new Date().toISOString(),
+              maintenanceAuthority: checked.maintenanceAuthority
+            };
+            assertDeploymentProvenance(refreshed, {
+              network: identity,
+              compatibility: COMPATIBILITY,
+              deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+              sourceRevision: priorSourceRevision,
+              compilerVersion: COMPATIBILITY.compiler,
+              artifactSha256,
+              maintenanceAuthority: checked.maintenanceAuthority,
+              chainDeployment: checked.chainDeployment
+            });
+            records.set(token.symbol, refreshed);
             console.log(`[resume] ${token.symbol} ${prior.contractAddress}`);
             continue;
           } catch (error) {
@@ -276,7 +343,7 @@ async function deployAll(): Promise<void> {
           nodeWS: endpoints.nodeWS,
           proofServer: endpoints.proofServer,
           faucet: undefined
-        }, { privateStateStoreName: resolve(root, ".local", "private-state", `v2-${networkKey}`), zkConfigPath: path });
+        }, { privateStateStoreName: resolve(root, ".local", "private-state", `v2-${networkKey}-${workflowIdentity}`), zkConfigPath: path });
         const contractModule = moduleFor(token.privacy);
         const compiled = CompiledContract.make(`mint-test-token-${token.privacy}`, contractModule.Contract as never).pipe(
           CompiledContract.withVacantWitnesses,
@@ -289,7 +356,7 @@ async function deployAll(): Promise<void> {
         try {
           deployed = await withTimeout(`${token.symbol} deploy`, deployContract(providers as never, {
             compiledContract: compiled as never,
-            args: [token.name, token.symbol, BigInt(token.decimals), bytes32(token.domainSeparator)]
+            args: [token.name, token.symbol, BigInt(token.decimals), encodeDomainSeparator(token.domainSeparator)]
           } as never));
         } catch (error) {
           throw new Error(`${token.symbol}: deployment outcome is uncertain and remains marked in the private journal; reconcile the chain before retrying. ${error instanceof Error ? error.message : String(error)}`);
@@ -297,10 +364,10 @@ async function deployAll(): Promise<void> {
         const address = deployed.deployTxData.public.contractAddress;
         const publicTx = deployed.deployTxData.public;
         const provisional: DeploymentRecord = {
-          deploymentId: `${token.symbol}:${address}`,
+          deploymentId: deploymentIdentity(token.symbol, identity, address, publicTx.txId),
           status: "active",
           contractAddress: address,
-          tokenId: ledger.rawTokenType(bytes32(token.domainSeparator), address),
+          tokenId: ledger.rawTokenType(encodeDomainSeparator(token.domainSeparator), address),
           deploymentTransaction: publicTx.txId,
           deployedAt: asDate(publicTx.blockTimestamp),
           verifiedAt: asDate(publicTx.blockTimestamp),
@@ -318,14 +385,33 @@ async function deployAll(): Promise<void> {
         };
         journal = recordFinalizedDeployment(journal, provisional);
         await saveJournal();
-        const checked = await verifyContract(token, address, providers.publicDataProvider);
+        const checked = await verifyContract(token, address, provisional.confirmation, providers.publicDataProvider);
         if (checked.tokenId !== provisional.tokenId) throw new DeploymentVerificationError(`${token.symbol}: finalized token id mismatch`);
-        const record: DeploymentRecord = { ...provisional, verifiedAt: new Date().toISOString(), maintenanceAuthority: checked.maintenanceAuthority };
+        const record: DeploymentRecord = {
+          ...provisional,
+          deploymentId: deploymentIdentity(token.symbol, identity, address, checked.chainDeployment.transactionHash),
+          deploymentTransaction: checked.chainDeployment.transactionHash,
+          confirmation: { blockHeight: checked.chainDeployment.blockHeight, blockHash: checked.chainDeployment.blockHash },
+          verifiedAt: new Date().toISOString(),
+          maintenanceAuthority: checked.maintenanceAuthority
+        };
+        assertDeploymentProvenance(record, {
+          network: identity,
+          compatibility: COMPATIBILITY,
+          deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+          sourceRevision,
+          compilerVersion: COMPATIBILITY.compiler,
+          artifactSha256,
+          maintenanceAuthority: checked.maintenanceAuthority,
+          chainDeployment: checked.chainDeployment
+        });
         records.set(token.symbol, record);
         journal = completePendingDeployment(journal, record);
         await saveJournal();
         console.log(`[deploy] ${token.symbol} ${address} ${record.tokenId}`);
       }
+      journal = { ...journal, deployments: [...records.values()] };
+      await saveJournal();
       const registry = await publishReadyRegistry(outputPath, {
         network: identity,
         compatibility: COMPATIBILITY,
@@ -341,7 +427,7 @@ async function deployAll(): Promise<void> {
 }
 
 if (command === "deploy") {
-  await deployAll();
+  await withFileLock(`${outputPath}.deployment-workflow`, deployAll);
 } else if (command === "verify") {
   setNetworkId(endpoints.networkId);
   const registry = await readRegistry(outputPath);

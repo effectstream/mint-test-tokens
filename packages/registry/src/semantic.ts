@@ -1,4 +1,5 @@
 import { TOKEN_DEFINITIONS } from "./tokens.js";
+import { encodeDomainSeparator } from "./domain.js";
 import type { NetworkKey, TokenRegistry } from "./types.js";
 
 export type RegistryValidation =
@@ -157,6 +158,13 @@ export function validateRegistry(value: unknown, expectedNetwork?: NetworkKey): 
     const expected = definition as unknown as Record<string, unknown>;
     for (const field of ["name", "decimals", "privacy", "domainSeparator"] as const) {
       if (token[field] !== expected[field]) errors.push(`${definition.symbol}.${field} mismatch`);
+    }
+    if (typeof token.domainSeparator === "string") {
+      try {
+        encodeDomainSeparator(token.domainSeparator);
+      } catch (error) {
+        errors.push(`${definition.symbol}.domainSeparator: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     if (!isObject(token.faucet) || !sameRecord(token.faucet, expected.faucet as Record<string, unknown>)) {
       errors.push(`${definition.symbol}.faucet mismatch`);

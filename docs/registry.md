@@ -26,6 +26,7 @@ Midnight 1.x uses the root dependency context:
 npm ci --ignore-scripts
 MN_NETWORK=undeployed \
 MN_SEED_FILE=/secure/path/deployer-seed.hex \
+MN_METADATA_OUTPUT_DIR=/shared/registries/local-v1 \
 MN_NODE_URL=http://127.0.0.1:9944 \
 MN_NODE_WS_URL=ws://127.0.0.1:9944 \
 MN_INDEXER_URL=http://127.0.0.1:8088/api/v4/graphql \
@@ -40,6 +41,7 @@ Midnight 2.x has an isolated prerelease dependency context:
 npm --prefix contracts/v2 ci --ignore-scripts
 MN_NETWORK=undeployed \
 MN_SEED_FILE=/secure/path/deployer-seed.hex \
+MN_METADATA_OUTPUT_DIR=/shared/registries/local-v2 \
 MN_NODE_URL=http://127.0.0.1:9944 \
 MN_NODE_WS_URL=ws://127.0.0.1:9944 \
 MN_INDEXER_URL=http://127.0.0.1:8088/api/v4/graphql \
@@ -65,35 +67,74 @@ that no deployment finalized. The final registry is written only after every
 token passes, under an exclusive writer lock, with file and directory sync
 before the atomic rename.
 
+`MN_METADATA_OUTPUT_DIR` is optional and names the directory shared with local
+integrators. The filename inside it remains `metadata.{network}.json`. Use a
+different directory for every concurrently live local stack. The runner holds
+an output-scoped workflow lock from identity checking through deployment,
+recovery and final publication, so a second v1 or v2 runner targeting the same
+file fails instead of replacing it. Resume journals and private-state stores are
+also keyed by the resolved output path and stack identity. If the private
+journal is deleted or only partially populated while a valid same-stack ready
+registry remains, the runner adopts and verifies the registry's six active
+records before doing any deployment. A changed chain/runtime/genesis marks the
+old registry stale and stops; deployment proceeds only on an explicit rerun
+with `MN_REDEPLOY_STALE=1` after the operator confirms the reset.
+
+The source revision must be a full commit present in the current clone. The
+issuer Compact source and complete managed artifact trees used by the runner
+must match that commit byte-for-byte; relevant dirty or untracked files stop
+deployment. Generated deployment IDs bind the symbol to the stack identity,
+contract address and canonical indexer transaction hash, so a deterministic
+same-address deployment after a chain reset preserves the old stack's record
+as superseded history.
+
 If a deployment process is killed, a stale `.lock` file can remain beside the
 registry or private journal. Read the PID stored in the lock, confirm that no
 process with that PID is running, and then remove the lock manually. Never
 remove a lock owned by a live process; the tooling deliberately does not steal
 locks because two writers could otherwise publish conflicting state.
 
-The output is `metadata/metadata.undeployed.json`. It has the same schema as
-the tracked public files and is gitignored. Local services and the website can
-mount or read that path directly. Do not copy local addresses into source
-constants.
+The default output is `metadata/metadata.undeployed.json`; with
+`MN_METADATA_OUTPUT_DIR=/shared/registry`, it is
+`/shared/registry/metadata.undeployed.json`. It has the same schema as the
+tracked public files and the repository-local default is gitignored. Local
+services and the website can mount or read the configured path directly. Do
+not copy local addresses into source constants.
 
 ## Read-only verification
 
-Verification needs an indexer, but no wallet or seed. It compares every local
-verifier key with chain state, rejects missing or extra circuits, checks
-immutable metadata, derives the token ID from the final contract address and
-requires the recorded ID to match:
+Verification needs the node and indexer, but no wallet or seed. It compares
+every local verifier key with chain state, rejects missing or extra circuits,
+checks immutable metadata, derives the token ID from the final contract
+address, hashes the managed artifact tree, validates embedded compiler/runtime
+metadata, proves the recorded source paths match the recorded Git commit, and
+requires the current maintenance authority to match. It queries the original
+`ContractDeploy` action at the recorded height and independently matches its
+canonical transaction hash, block height and block hash. Network identity and
+the pinned compatibility declaration must also match:
 
 ```sh
 MN_NETWORK=undeployed \
+MN_METADATA_OUTPUT_DIR=/shared/registries/local-v1 \
+MN_NODE_URL=http://127.0.0.1:9944 \
 MN_INDEXER_URL=http://127.0.0.1:8088/api/v4/graphql \
 MN_INDEXER_WS_URL=ws://127.0.0.1:8088/api/v4/graphql/ws \
 npm run verify:v1
 
 MN_NETWORK=undeployed \
+MN_METADATA_OUTPUT_DIR=/shared/registries/local-v2 \
+MN_NODE_URL=http://127.0.0.1:9944 \
 MN_INDEXER_URL=http://127.0.0.1:8088/api/v4/graphql \
 MN_INDEXER_WS_URL=ws://127.0.0.1:8088/api/v4/graphql/ws \
 npm --prefix contracts/v2 run verify
 ```
+
+The `deploymentToolchain` tuple is an operator declaration captured by the
+deployment command. Read-only verification confirms that it matches this
+release's pinned runner configuration; it cannot cryptographically prove which
+historical process invoked the deployment. The on-chain verifier keys,
+immutable state, current authority, deploy action, block evidence, source tree
+and artifact digest are independently checked and reported separately.
 
 For public v1 deployments, set `MN_NETWORK=preview` or `preprod`; the runner
 uses the official public RPC and indexer defaults and requires access to a
@@ -113,6 +154,13 @@ accepts `Either<ZswapCoinPublicKey, ContractAddress>`, a positive caller-chosen
 `Uint<64>` amount and a unique `Bytes<32>` nonce. Unshielded `mint` accepts
 `Either<ContractAddress, UserAddress>` and a positive caller-chosen `Uint<64>`
 amount. The different union ordering is intentional.
+
+`domainSeparator` has one canonical byte representation: encode the JSON
+string as UTF-8, reject values longer than 32 encoded bytes, and append zero
+bytes on the right until exactly 32 bytes are present. Contract construction
+and token-ID derivation use those exact bytes. The browser-safe semantic
+validator enforces the encoded-byte limit in addition to JSON Schema's string
+length check.
 
 For a third-party shielded user, transaction construction must include the
 recipient's coin public key and encryption public key in
