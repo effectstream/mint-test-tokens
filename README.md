@@ -18,4 +18,9 @@ metadata and are not enforced by the contracts.
 npm install
 npm run check
 ```
+
+The static minting directory lives in [`frontend/`](frontend/README.md). It
+loads the registry at runtime, connects a compatible Midnight wallet, reads
+the exact shielded and unshielded balances, and submits fixed faucet amounts
+through isolated Midnight 1.x and 2.x browser adapters.
 Native Midnight test tokens, canonical network metadata, and a static minting site
