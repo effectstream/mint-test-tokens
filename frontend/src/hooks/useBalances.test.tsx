@@ -40,6 +40,7 @@ function wallet(
       getShieldedBalances: shielded,
       getUnshieldedBalances: unshielded,
     } as ConnectedWalletSession['api'],
+    assertCurrent: async () => ({ networkId: 'preview' } as never),
   };
 }
 
@@ -70,5 +71,25 @@ describe('wallet balances', () => {
     await waitFor(() => expect(result.current.balances.twBTC).toMatchObject({ formatted: '2' }));
     await act(async () => resolveOld?.({ abc: 900_000_000n }));
     expect(result.current.balances.twBTC).toMatchObject({ formatted: '2' });
+  });
+
+  it('does not publish balances read across a same-network account change', async () => {
+    let account = 'A';
+    let resolveBalance: ((value: Record<string, bigint>) => void) | undefined;
+    const delayed = new Promise<Record<string, bigint>>((resolve) => { resolveBalance = resolve; });
+    const tokens = [token('twBTC', 'abc', 'shielded', 8)];
+    const session = wallet(1, () => delayed, async () => ({}));
+    session.assertCurrent = async () => {
+      if (account !== 'A') throw new Error('The wallet account changed; reconnect it before reading balances.');
+      return { networkId: 'preview' } as never;
+    };
+    const { result } = renderHook(() => useBalances(tokens, session));
+    await waitFor(() => expect(result.current.balances.twBTC?.kind).toBe('loading'));
+
+    account = 'B';
+    await act(async () => resolveBalance?.({ abc: 900_000_000n }));
+
+    await waitFor(() => expect(result.current.balances.twBTC?.kind).toBe('error'));
+    expect(result.current.balances.twBTC).not.toMatchObject({ formatted: '9' });
   });
 });

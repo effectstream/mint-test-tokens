@@ -65,6 +65,7 @@ function activeState(kind: MintSession['state']['kind']): boolean {
 export function useMintFlow({
   network,
   registryKey,
+  registryReady,
   protocolFamily,
   adapter,
   wallet,
@@ -72,6 +73,7 @@ export function useMintFlow({
 }: {
   network: NetworkKey;
   registryKey: string | null;
+  registryReady: boolean;
   protocolFamily: TokenProtocolAdapter['protocolFamily'] | null;
   adapter: TokenProtocolAdapter | null;
   wallet: ConnectedWalletSession | null;
@@ -80,8 +82,8 @@ export function useMintFlow({
   const [session, setSession] = useState<MintSession | null>(null);
   const operation = useRef(0);
   const inFlight = useRef(false);
-  const currentContext = useRef({ network, registryKey, protocolFamily, adapter, wallet });
-  currentContext.current = { network, registryKey, protocolFamily, adapter, wallet };
+  const currentContext = useRef({ network, registryKey, registryReady, protocolFamily, adapter, wallet });
+  currentContext.current = { network, registryKey, registryReady, protocolFamily, adapter, wallet };
 
   useEffect(() => {
     setSession((current) => {
@@ -91,9 +93,9 @@ export function useMintFlow({
   }, [network, registryKey]);
 
   const begin = useCallback((token: TokenView) => {
-    if (inFlight.current || !registryKey || !adapter || !wallet || wallet.network !== network || !token.issuerAddress || !token.tokenId) return;
+    if (inFlight.current || !registryReady || !registryKey || !adapter || !wallet || wallet.network !== network || !token.issuerAddress || !token.tokenId) return;
     setSession({ token, network, registryKey, recipient: { kind: 'self' }, state: { kind: 'idle' } });
-  }, [adapter, network, registryKey, wallet]);
+  }, [adapter, network, registryKey, registryReady, wallet]);
 
   const review = useCallback((recipient: MintRecipient) => {
     setSession((current) => current && !activeState(current.state.kind)
@@ -118,6 +120,7 @@ export function useMintFlow({
     if (!session || session.state.kind !== 'reviewing' || !adapter || !wallet || inFlight.current) return;
     if (
       !registryKey
+      || !registryReady
       || session.registryKey !== registryKey
       || wallet.network !== session.network
       || adapter.protocolFamily !== protocolFamily
@@ -125,11 +128,12 @@ export function useMintFlow({
       setSession((current) => current ? { ...current, state: { kind: 'failed', message: 'Wallet, adapter, and mint request no longer refer to the same network.' } } : current);
       return;
     }
-    const context = { network, registryKey, protocolFamily, adapter, wallet };
+    const context = { network, registryKey, registryReady, protocolFamily, adapter, wallet };
     const contextIsCurrent = () => {
       const latest = currentContext.current;
       return latest.network === context.network
         && latest.registryKey === context.registryKey
+        && latest.registryReady === context.registryReady
         && latest.protocolFamily === context.protocolFamily
         && latest.adapter === context.adapter
         && latest.wallet?.id === context.wallet.id;
@@ -209,7 +213,7 @@ export function useMintFlow({
     } finally {
       if (id === operation.current) inFlight.current = false;
     }
-  }, [adapter, network, onConfirmedToSelf, protocolFamily, registryKey, session, wallet]);
+  }, [adapter, network, onConfirmedToSelf, protocolFamily, registryKey, registryReady, session, wallet]);
 
   return { session, begin, review, confirm, reset, close };
 }

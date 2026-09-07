@@ -31,6 +31,7 @@ const wallet = {
   shieldedEncryptionPublicKey: 'encryption-key',
   unshieldedAddress: 'user-address',
   api: {} as ConnectedWalletSession['api'],
+  assertCurrent: async () => ({ networkId: 'preview' } as never),
 } satisfies ConnectedWalletSession;
 
 describe('mint flow', () => {
@@ -55,6 +56,7 @@ describe('mint flow', () => {
     const { result } = renderHook(() => useMintFlow({
       network: 'preview',
       registryKey: 'preview-rev-1',
+      registryReady: true,
       protocolFamily: 'midnight-1.x',
       adapter,
       wallet,
@@ -86,6 +88,7 @@ describe('mint flow', () => {
     const { result } = renderHook(() => useMintFlow({
       network: 'preview',
       registryKey: 'preview-rev-1',
+      registryReady: true,
       protocolFamily: 'midnight-1.x',
       adapter,
       wallet,
@@ -113,6 +116,7 @@ describe('mint flow', () => {
     const { result } = renderHook(() => useMintFlow({
       network: 'preview',
       registryKey: 'preview-rev-1',
+      registryReady: true,
       protocolFamily: 'midnight-1.x',
       adapter,
       wallet,
@@ -126,7 +130,7 @@ describe('mint flow', () => {
     expect(result.current.session?.state).toMatchObject({ kind: 'uncertain', transactionId: 'tx-known' });
   });
 
-  it('invalidates review when the canonical registry identity changes', async () => {
+  it('invalidates review when the canonical registry becomes non-ready', async () => {
     const adapter: TokenProtocolAdapter = {
       protocolFamily: 'midnight-1.x',
       readMetadata: async () => ({ name: twBTC.name, symbol: twBTC.symbol, decimals: 8, tokenId: twBTC.tokenId! }),
@@ -134,17 +138,50 @@ describe('mint flow', () => {
       mint: vi.fn(),
     };
     const { result, rerender } = renderHook(
-      ({ registryKey }) => useMintFlow({
-        network: 'preview', registryKey, protocolFamily: 'midnight-1.x', adapter, wallet, onConfirmedToSelf: vi.fn(),
+      ({ registryKey, registryReady }) => useMintFlow({
+        network: 'preview', registryKey, registryReady, protocolFamily: 'midnight-1.x', adapter, wallet, onConfirmedToSelf: vi.fn(),
       }),
-      { initialProps: { registryKey: 'preview-rev-1' } },
+      { initialProps: { registryKey: 'preview-rev-1:true', registryReady: true } },
     );
 
     act(() => result.current.begin(twBTC));
     act(() => result.current.review({ kind: 'self' }));
-    rerender({ registryKey: 'preview-rev-2' });
+    rerender({ registryKey: 'preview-rev-1:false', registryReady: false });
 
     await waitFor(() => expect(result.current.session).toBeNull());
+  });
+
+  it('does not submit when readiness changes during metadata preflight', async () => {
+    let resolveMetadata: ((value: { name: string; symbol: string; decimals: number; tokenId: string }) => void) | undefined;
+    const metadata = new Promise<{ name: string; symbol: string; decimals: number; tokenId: string }>((resolve) => {
+      resolveMetadata = resolve;
+    });
+    const mint = vi.fn();
+    const adapter: TokenProtocolAdapter = {
+      protocolFamily: 'midnight-1.x',
+      readMetadata: () => metadata,
+      readBalance: async () => 0n,
+      mint,
+    };
+    const { result, rerender } = renderHook(
+      ({ registryKey, registryReady }) => useMintFlow({
+        network: 'preview', registryKey, registryReady, protocolFamily: 'midnight-1.x', adapter, wallet,
+        onConfirmedToSelf: vi.fn(),
+      }),
+      { initialProps: { registryKey: 'preview-rev-1:true', registryReady: true } },
+    );
+    act(() => result.current.begin(twBTC));
+    act(() => result.current.review({ kind: 'self' }));
+    let pending: Promise<void> | undefined;
+    act(() => { pending = result.current.confirm(); });
+    rerender({ registryKey: 'preview-rev-1:false', registryReady: false });
+    await act(async () => {
+      resolveMetadata?.({ name: twBTC.name, symbol: twBTC.symbol, decimals: 8, tokenId: twBTC.tokenId! });
+      await pending;
+    });
+
+    expect(mint).not.toHaveBeenCalled();
+    expect(result.current.session?.state).toMatchObject({ kind: 'failed' });
   });
 
   it('does not submit after the wallet changes during metadata preflight', async () => {
@@ -162,7 +199,7 @@ describe('mint flow', () => {
     const replacement = { ...wallet, id: 2, walletId: 'replacement' };
     const { result, rerender } = renderHook(
       ({ connectedWallet }) => useMintFlow({
-        network: 'preview', registryKey: 'preview-rev-1', protocolFamily: 'midnight-1.x', adapter,
+        network: 'preview', registryKey: 'preview-rev-1', registryReady: true, protocolFamily: 'midnight-1.x', adapter,
         wallet: connectedWallet, onConfirmedToSelf: vi.fn(),
       }),
       { initialProps: { connectedWallet: wallet } },
@@ -192,7 +229,7 @@ describe('mint flow', () => {
       mint: () => submitted,
     };
     const { result } = renderHook(() => useMintFlow({
-      network: 'preview', registryKey: 'preview-rev-1', protocolFamily: 'midnight-1.x', adapter, wallet,
+      network: 'preview', registryKey: 'preview-rev-1', registryReady: true, protocolFamily: 'midnight-1.x', adapter, wallet,
       onConfirmedToSelf: vi.fn(),
     }));
 

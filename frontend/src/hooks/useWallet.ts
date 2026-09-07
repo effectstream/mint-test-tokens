@@ -21,6 +21,11 @@ export interface ConnectedWalletSession {
   shieldedCoinPublicKey: string;
   shieldedEncryptionPublicKey: string;
   unshieldedAddress: string;
+  assertCurrent(): Promise<Awaited<ReturnType<ConnectedWalletCapabilities['getConfiguration']>>>;
+}
+
+function sameConnectorValue(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
 function injectedWallets(): Map<string, InjectedWallet> {
@@ -129,6 +134,31 @@ export function useWallet(network: NetworkKey, networkId: string | null) {
         throw new Error(`Wallet is on ${configuration.networkId}; select ${networkId} in the wallet and reconnect.`);
       }
 
+      const assertCurrent = async () => {
+        const [currentConfiguration, currentShielded, currentUnshielded] = await Promise.all([
+          api.getConfiguration(),
+          api.getShieldedAddresses(),
+          api.getUnshieldedAddress(),
+        ]);
+        const networkChanged = currentConfiguration.networkId !== networkId;
+        const accountChanged = !sameConnectorValue(currentShielded.shieldedAddress, shielded.shieldedAddress)
+          || !sameConnectorValue(currentShielded.shieldedCoinPublicKey, shielded.shieldedCoinPublicKey)
+          || !sameConnectorValue(currentShielded.shieldedEncryptionPublicKey, shielded.shieldedEncryptionPublicKey)
+          || !sameConnectorValue(currentUnshielded.unshieldedAddress, unshielded.unshieldedAddress);
+        if (networkChanged || accountChanged) {
+          const message = networkChanged
+            ? `Wallet changed to ${currentConfiguration.networkId}; reconnect it to ${networkId}.`
+            : 'The wallet account changed; reconnect it before minting or reading balances.';
+          if (id === sessionCounter.current) {
+            sessionCounter.current += 1;
+            setSession(null);
+            setState({ kind: 'error', wallets: options(wallets.current), message });
+          }
+          throw new Error(message);
+        }
+        return currentConfiguration;
+      };
+
       const connected: ConnectedWalletSession = {
         id,
         walletId: option.id,
@@ -140,6 +170,7 @@ export function useWallet(network: NetworkKey, networkId: string | null) {
         shieldedCoinPublicKey: shielded.shieldedCoinPublicKey,
         shieldedEncryptionPublicKey: shielded.shieldedEncryptionPublicKey,
         unshieldedAddress: unshielded.unshieldedAddress,
+        assertCurrent,
       };
       setSession(connected);
       setState({

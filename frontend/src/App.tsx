@@ -43,21 +43,24 @@ export function App() {
   const [localEnabled, setLocalEnabled] = useState(network === 'undeployed');
   const directory = useDirectory(network);
   const registry = directory.state.kind === 'ready' ? directory.state.registry : null;
+  const registryReady = registry?.ready === true && directory.state.kind === 'ready' && !directory.state.revalidating;
   const registryKey = useMemo(() => registry ? [
     registry.network,
     registry.networkId,
     registry.protocolFamily,
     registry.revision,
+    String(registryReady),
     ...registry.tokens.map((token) => `${token.symbol}:${token.issuerAddress ?? '-'}:${token.tokenId ?? '-'}`),
-  ].join('|') : null, [registry]);
+  ].join('|') : null, [registry, registryReady]);
   const wallet = useWallet(network, registry?.networkId ?? null);
   const tokens = useMemo(() => registry?.tokens ?? [], [registry]);
   const balanceController = useBalances(tokens, wallet.session);
-  const adapterState = useProtocolAdapter(registry, wallet.session);
+  const adapterState = useProtocolAdapter(registryReady ? registry : null, wallet.session);
   const adapter = adapterState.adapter;
   const mint = useMintFlow({
     network,
     registryKey,
+    registryReady,
     protocolFamily: registry?.protocolFamily ?? null,
     adapter,
     wallet: wallet.session,
@@ -156,7 +159,7 @@ export function App() {
             <TokenDirectory
               directory={renderedDirectory}
               wallet={wallet.state}
-              mintAvailable={adapter !== null}
+              mintAvailable={adapter !== null && registryReady}
               onMint={mint.begin}
               onRefreshBalance={() => void balanceController.refresh('refreshing')}
               onRetryMetadata={() => void directory.reload()}

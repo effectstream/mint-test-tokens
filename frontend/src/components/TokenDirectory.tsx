@@ -59,7 +59,7 @@ export function TokenDirectory({
             token={token}
             network={directory.registry.network}
             wallet={wallet}
-            mintAvailable={mintAvailable}
+            mintAvailable={mintAvailable && directory.registry.ready && !directory.revalidating}
             onMint={onMint}
             onRefreshBalance={onRefreshBalance}
           />

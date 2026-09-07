@@ -15,9 +15,6 @@ import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { createProofProvider, SucceedEntirely, ZKConfigProvider } from '@midnight-ntwrk/midnight-js-types';
 import {
   MidnightBech32m,
-  ShieldedAddress,
-  ShieldedCoinPublicKey,
-  ShieldedEncryptionPublicKey,
   UnshieldedAddress,
 } from '@midnight-ntwrk/wallet-sdk-address-format';
 import * as Shielded from '../../../../contracts/v1/managed/shielded/contract/index.js';
@@ -27,6 +24,7 @@ import {
   type ProtocolBridge,
   type WalletSessionLike,
 } from '../../shared/adapter-core';
+import { normalizeShieldedIdentity } from './identity';
 
 const PROFILE = 'v1';
 const blank = () => new Uint8Array(32);
@@ -76,16 +74,7 @@ function trimHex(value: string): string {
 }
 
 function shieldedKeys(request: Extract<MintRequest['recipient'], { kind: 'shielded-user' }>, networkId: string) {
-  const coinKey = ShieldedCoinPublicKey.fromHexString(trimHex(request.coinPublicKey)).toHexString();
-  const encryptionKey = ShieldedEncryptionPublicKey.fromHexString(trimHex(request.encryptionPublicKey)).toHexString();
-  const address = MidnightBech32m.parse(request.shieldedAddress).decode(ShieldedAddress, networkId);
-  if (trimHex(address.coinPublicKeyString()) !== trimHex(coinKey)) {
-    throw new Error('Shielded address and coin public key do not match.');
-  }
-  if (trimHex(address.encryptionPublicKeyString()) !== trimHex(encryptionKey)) {
-    throw new Error('Shielded address and encryption public key do not match.');
-  }
-  return { coinKey, encryptionKey };
+  return normalizeShieldedIdentity(request, networkId);
 }
 
 function rawUserAddress(value: string, networkId: string): string {
@@ -184,5 +173,14 @@ const bridge: ProtocolBridge = {
 };
 
 export function createV1Adapter(session: WalletSessionLike) {
-  return createProtocolAdapter(session, bridge);
+  const keys = normalizeShieldedIdentity({
+    shieldedAddress: session.shieldedAddress,
+    coinPublicKey: session.shieldedCoinPublicKey,
+    encryptionPublicKey: session.shieldedEncryptionPublicKey,
+  }, session.networkId);
+  return createProtocolAdapter({
+    ...session,
+    shieldedCoinPublicKey: keys.coinKey,
+    shieldedEncryptionPublicKey: keys.encryptionKey,
+  }, bridge);
 }

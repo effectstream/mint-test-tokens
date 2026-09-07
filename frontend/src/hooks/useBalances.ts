@@ -38,10 +38,12 @@ export function useBalances(tokens: TokenView[], session: ConnectedWalletSession
     })));
 
     try {
+      await session.assertCurrent();
       const [shielded, unshielded] = await Promise.all([
         session.api.getShieldedBalances(),
         session.api.getUnshieldedBalances(),
       ]);
+      await session.assertCurrent();
       if (id !== generation.current) return;
       const updatedAt = new Date();
       setBalances(Object.fromEntries(tokens.map((token) => {

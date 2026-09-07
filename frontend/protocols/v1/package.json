@@ -14,7 +14,9 @@
     "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
     "@midnight-ntwrk/midnight-js-types": "4.1.1",
     "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
-    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.0"
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.0",
+    "@scure/base": "2.4.0",
+    "buffer": "6.0.3"
   },
   "overrides": {
     "@midnight-ntwrk/compact-js": "2.5.1",

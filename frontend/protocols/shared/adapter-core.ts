@@ -51,8 +51,10 @@ export interface ProtocolBridge {
 export interface WalletSessionLike {
   api: ConnectedWalletCapabilities;
   networkId: string;
+  shieldedAddress: string;
   shieldedCoinPublicKey: string;
   shieldedEncryptionPublicKey: string;
+  assertCurrent(): Promise<Awaited<ReturnType<ConnectedWalletCapabilities['getConfiguration']>>>;
 }
 
 export type DisposableProtocolAdapter = TokenProtocolAdapter & { dispose(): void };
@@ -131,7 +133,7 @@ export function createProtocolAdapter(
 
   const assertActiveSession = async () => {
     if (disposed) throw new Error('The wallet session was disconnected.');
-    const configuration = await session.api.getConfiguration();
+    const configuration = await session.assertCurrent();
     if (disposed) throw new Error('The wallet session was disconnected.');
     if (configuration.networkId !== session.networkId) {
       throw new Error(`Wallet changed to ${configuration.networkId}; reconnect it to ${session.networkId}.`);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ConnectedWalletCapabilities, MintRequest } from '@effectstream/mint-test-token-protocol-interface';
-import { createProtocolAdapter, type ProtocolBridge } from './adapter-core';
+import { createProtocolAdapter, type FinalizedTransactionLike, type ProtocolBridge } from './adapter-core';
 
 describe('protocol adapter wallet boundary', () => {
   it('submits the wallet-balanced bytes and waits for an exact success', async () => {
@@ -48,8 +48,10 @@ describe('protocol adapter wallet boundary', () => {
     const adapter = createProtocolAdapter({
       api,
       networkId: 'preview',
+      shieldedAddress: 'shielded',
       shieldedCoinPublicKey: 'coin',
       shieldedEncryptionPublicKey: 'encryption',
+      assertCurrent: api.getConfiguration,
     }, bridge);
     const request: MintRequest = {
       networkKey: 'preview',
@@ -96,7 +98,10 @@ describe('protocol adapter wallet boundary', () => {
         return { transactionId: await (providers.midnightProvider as any).submitTx(tx) };
       },
     };
-    const adapter = createProtocolAdapter({ api, networkId: 'preview', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc' }, bridge);
+    const adapter = createProtocolAdapter({
+      api, networkId: 'preview', shieldedAddress: 'shielded', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc',
+      assertCurrent: api.getConfiguration,
+    }, bridge);
     const request: MintRequest = {
       networkKey: 'preview', contractAddress: 'issuer', tokenId: 'id', privacy: 'unshielded',
       recipient: { kind: 'unshielded-user', userAddress: 'user' }, amount: 1n,
@@ -144,7 +149,8 @@ describe('protocol adapter wallet boundary', () => {
       submitMint,
     };
     const adapter = createProtocolAdapter({
-      api, networkId: 'preview', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc',
+      api, networkId: 'preview', shieldedAddress: 'shielded', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc',
+      assertCurrent: api.getConfiguration,
     }, bridge);
     const pending = adapter.mint({
       networkKey: 'preview', contractAddress: 'issuer', tokenId: 'id', privacy: 'shielded',
@@ -158,5 +164,180 @@ describe('protocol adapter wallet boundary', () => {
 
     await expect(pending).rejects.toThrow('Wallet changed to preprod');
     expect(submitMint).not.toHaveBeenCalled();
+  });
+
+  it('stops after a readiness-triggered disposal during proving', async () => {
+    let releaseProvingProvider: (() => void) | undefined;
+    let provingProviderStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { provingProviderStarted = resolve; });
+    const provingProvider = new Promise<object>((resolve) => {
+      releaseProvingProvider = () => resolve({ walletOwned: true });
+    });
+    const api = {
+      getConfiguration: async () => ({
+        networkId: 'preview', indexerUri: 'https://indexer.example/graphql',
+        indexerWsUri: 'wss://indexer.example/graphql/ws', substrateNodeUri: 'wss://node.example',
+      }),
+      getProvingProvider: async () => {
+        provingProviderStarted?.();
+        return provingProvider;
+      },
+      balanceUnsealedTransaction: async () => ({ tx: 'aabb' }),
+      submitTransaction: vi.fn(),
+      getShieldedBalances: async () => ({}),
+      getUnshieldedBalances: async () => ({}),
+      getShieldedAddresses: async () => ({ shieldedAddress: 'shielded', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc' }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: 'user' }),
+    } as ConnectedWalletCapabilities;
+    const submitMint = vi.fn();
+    const bridge: ProtocolBridge = {
+      protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
+      createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
+      createProofProvider: (provider) => provider,
+      deserializeFinalizedTransaction: () => ({ identifiers: () => ['tx'], serialize: () => new Uint8Array([1]) }),
+      isSuccessStatus: () => true,
+      readMetadata: async () => ({ name: 'Token', symbol: 'TKN', decimals: 6, tokenId: 'id' }),
+      submitMint,
+    };
+    const adapter = createProtocolAdapter({
+      api, networkId: 'preview', shieldedAddress: 'shielded', shieldedCoinPublicKey: 'coin', shieldedEncryptionPublicKey: 'enc',
+      assertCurrent: api.getConfiguration,
+    }, bridge);
+    const pending = adapter.mint({
+      networkKey: 'preview', contractAddress: 'issuer', tokenId: 'id', privacy: 'shielded',
+      recipient: { kind: 'shielded-user', shieldedAddress: 'shielded', coinPublicKey: 'coin', encryptionPublicKey: 'enc' },
+      amount: 1n,
+    });
+
+    await started;
+    adapter.dispose();
+    releaseProvingProvider?.();
+
+    await expect(pending).rejects.toThrow('wallet session was disconnected');
+    expect(submitMint).not.toHaveBeenCalled();
+  });
+
+  it('stops when the same-network account changes during proving-provider approval', async () => {
+    let account = 'A';
+    let releaseProvingProvider: (() => void) | undefined;
+    let provingProviderStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { provingProviderStarted = resolve; });
+    const provingProvider = new Promise<object>((resolve) => {
+      releaseProvingProvider = () => resolve({ walletOwned: true });
+    });
+    const api = {
+      getConfiguration: async () => ({
+        networkId: 'preview', indexerUri: 'https://indexer.example/graphql',
+        indexerWsUri: 'wss://indexer.example/graphql/ws', substrateNodeUri: 'wss://node.example',
+      }),
+      getProvingProvider: async () => {
+        provingProviderStarted?.();
+        return provingProvider;
+      },
+      balanceUnsealedTransaction: async () => ({ tx: 'aabb' }),
+      submitTransaction: vi.fn(),
+      getShieldedBalances: async () => ({}),
+      getUnshieldedBalances: async () => ({}),
+      getShieldedAddresses: async () => ({ shieldedAddress: account, shieldedCoinPublicKey: account, shieldedEncryptionPublicKey: account }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: account }),
+    } as ConnectedWalletCapabilities;
+    const submitMint = vi.fn();
+    const bridge: ProtocolBridge = {
+      protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
+      createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
+      createProofProvider: (provider) => provider,
+      deserializeFinalizedTransaction: () => ({ identifiers: () => ['tx'], serialize: () => new Uint8Array([1]) }),
+      isSuccessStatus: () => true,
+      readMetadata: async () => ({ name: 'Token', symbol: 'TKN', decimals: 6, tokenId: 'id' }),
+      submitMint,
+    };
+    const assertCurrent = async () => {
+      if (account !== 'A') throw new Error('The wallet account changed.');
+      return api.getConfiguration();
+    };
+    const adapter = createProtocolAdapter({
+      api, networkId: 'preview', shieldedAddress: 'A', shieldedCoinPublicKey: 'A', shieldedEncryptionPublicKey: 'A',
+      assertCurrent,
+    }, bridge);
+    const pending = adapter.mint({
+      networkKey: 'preview', contractAddress: 'issuer', tokenId: 'id', privacy: 'shielded',
+      recipient: { kind: 'shielded-user', shieldedAddress: 'A', coinPublicKey: 'A', encryptionPublicKey: 'A' },
+      amount: 1n,
+    });
+
+    await started;
+    account = 'B';
+    releaseProvingProvider?.();
+
+    await expect(pending).rejects.toThrow('wallet account changed');
+    expect(submitMint).not.toHaveBeenCalled();
+  });
+
+  it('stops when the same-network account changes during wallet balancing', async () => {
+    let account = 'A';
+    let releaseBalance: (() => void) | undefined;
+    let balanceStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { balanceStarted = resolve; });
+    const balanced = new Promise<{ tx: string }>((resolve) => {
+      releaseBalance = () => resolve({ tx: 'aabb' });
+    });
+    const submitTransaction = vi.fn();
+    const api = {
+      getConfiguration: async () => ({
+        networkId: 'preview', indexerUri: 'https://indexer.example/graphql',
+        indexerWsUri: 'wss://indexer.example/graphql/ws', substrateNodeUri: 'wss://node.example',
+      }),
+      getProvingProvider: async () => ({}),
+      balanceUnsealedTransaction: async () => {
+        balanceStarted?.();
+        return balanced;
+      },
+      submitTransaction,
+      getShieldedBalances: async () => ({}),
+      getUnshieldedBalances: async () => ({}),
+      getShieldedAddresses: async () => ({ shieldedAddress: account, shieldedCoinPublicKey: account, shieldedEncryptionPublicKey: account }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: account }),
+    } as ConnectedWalletCapabilities;
+    const bridge: ProtocolBridge = {
+      protocolFamily: 'midnight-1.x', setNetworkId: vi.fn(),
+      createPublicDataProvider: () => ({ queryContractState: async () => null, watchForTxData: async () => ({ status: 'ok' }) }),
+      createZkConfigProvider: () => ({ asKeyMaterialProvider: () => ({}) }),
+      createProofProvider: (provider) => provider,
+      deserializeFinalizedTransaction: () => ({ identifiers: () => ['tx'], serialize: () => new Uint8Array([1]) }),
+      isSuccessStatus: () => true,
+      readMetadata: async () => ({ name: 'Token', symbol: 'TKN', decimals: 6, tokenId: 'id' }),
+      submitMint: async (providers) => {
+        const transaction = await (providers.walletProvider as {
+          balanceTx(tx: { serialize(): Uint8Array }): Promise<FinalizedTransactionLike>;
+        }).balanceTx({ serialize: () => new Uint8Array([1]) });
+        return {
+          transactionId: await (providers.midnightProvider as {
+            submitTx(tx: FinalizedTransactionLike): Promise<string>;
+          }).submitTx(transaction),
+        };
+      },
+    };
+    const assertCurrent = async () => {
+      if (account !== 'A') throw new Error('The wallet account changed.');
+      return api.getConfiguration();
+    };
+    const adapter = createProtocolAdapter({
+      api, networkId: 'preview', shieldedAddress: 'A', shieldedCoinPublicKey: 'A', shieldedEncryptionPublicKey: 'A',
+      assertCurrent,
+    }, bridge);
+    const pending = adapter.mint({
+      networkKey: 'preview', contractAddress: 'issuer', tokenId: 'id', privacy: 'unshielded',
+      recipient: { kind: 'unshielded-user', userAddress: 'A' },
+      amount: 1n,
+    });
+
+    await started;
+    account = 'B';
+    releaseBalance?.();
+
+    await expect(pending).rejects.toThrow('wallet account changed');
+    expect(submitTransaction).not.toHaveBeenCalled();
   });
 });
