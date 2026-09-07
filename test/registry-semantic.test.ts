@@ -53,6 +53,7 @@ function makeReady(protocol: "v1" | "v2" = "v1"): TokenRegistry {
         verifiedAt: "2026-09-07T10:01:00.000Z",
         network: clone(network),
         compatibility: clone(compatibility),
+        deploymentToolchain: { runner: "test-runner", runnerVersion: "1.0.0", walletSdk: compatibility.walletSdk },
         confirmation: { blockHeight: "12", blockHash: `0x${index}` },
         maintenanceAuthority: { status: "unknown", address: null },
         artifact: {

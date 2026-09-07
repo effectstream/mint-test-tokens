@@ -3,10 +3,11 @@
 Native test-token issuers and a canonical, static registry for Preview,
 Preprod, Stagenet, and local Midnight stacks.
 
-The registry contract is documented in [`docs/registry.md`](docs/registry.md).
-Public files live at `metadata/metadata.{network}.json`. A local deployment
-creates `metadata.undeployed.json` atomically; that file is deliberately ignored
-by Git.
+The registry contract and deployment commands are documented in
+[`docs/registry.md`](docs/registry.md). Public files live at
+`metadata/metadata.{network}.json`. A local deployment creates
+`metadata/metadata.undeployed.json` atomically; that file is deliberately
+ignored by Git and is the local integration source of truth.
 
 The contracts expose immutable OpenZeppelin-compatible `name`, `symbol`, and
 `decimals` metadata, a final-address-derived `tokenColor`, and a positive,

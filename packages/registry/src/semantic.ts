@@ -71,6 +71,13 @@ function validateDeployment(deployment: Record<string, unknown>, symbol: string,
       }
     }
   }
+  if (!isObject(deployment.deploymentToolchain)) {
+    errors.push(`${path}.deploymentToolchain must be an object`);
+  } else {
+    for (const field of ["runner", "runnerVersion", "walletSdk"] as const) {
+      if (!isNonEmptyString(deployment.deploymentToolchain[field])) errors.push(`${path}.deploymentToolchain.${field} must be non-empty`);
+    }
+  }
   if (!isObject(deployment.confirmation)) {
     errors.push(`${path}.confirmation must be an object`);
   } else {

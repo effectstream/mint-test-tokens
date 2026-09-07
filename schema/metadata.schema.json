@@ -70,7 +70,7 @@
     "deployment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deploymentId", "status", "contractAddress", "tokenId", "deploymentTransaction", "deployedAt", "verifiedAt", "network", "compatibility", "confirmation", "maintenanceAuthority", "artifact"],
+      "required": ["deploymentId", "status", "contractAddress", "tokenId", "deploymentTransaction", "deployedAt", "verifiedAt", "network", "compatibility", "deploymentToolchain", "confirmation", "maintenanceAuthority", "artifact"],
       "properties": {
         "deploymentId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["active", "superseded"] },
@@ -81,6 +81,16 @@
         "verifiedAt": { "type": "string", "format": "date-time" },
         "network": { "$ref": "#/properties/network" },
         "compatibility": { "$ref": "#/properties/compatibility" },
+        "deploymentToolchain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runner", "runnerVersion", "walletSdk"],
+          "properties": {
+            "runner": { "type": "string", "minLength": 1 },
+            "runnerVersion": { "type": "string", "minLength": 1 },
+            "walletSdk": { "type": "string", "minLength": 1 }
+          }
+        },
         "confirmation": {
           "type": "object",
           "additionalProperties": false,

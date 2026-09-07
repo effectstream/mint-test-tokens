@@ -1,4 +1,5 @@
 node_modules/
+contracts/*/node_modules/
 dist/
 coverage/
 *.log

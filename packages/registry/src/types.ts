@@ -22,6 +22,11 @@ export interface ArtifactProvenance {
   artifactSha256: string;
   openZeppelinRelease: string | null;
 }
+export interface DeploymentToolchain {
+  runner: string;
+  runnerVersion: string;
+  walletSdk: string;
+}
 export interface DeploymentRecord {
   deploymentId: string;
   status: DeploymentStatus;
@@ -32,6 +37,7 @@ export interface DeploymentRecord {
   verifiedAt: string;
   network: NetworkIdentity;
   compatibility: CompatibilitySnapshot;
+  deploymentToolchain: DeploymentToolchain;
   confirmation: { blockHeight: string; blockHash: string };
   maintenanceAuthority: {
     status: MaintenanceAuthorityStatus;
