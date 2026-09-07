@@ -1,13 +1,38 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { unavailableTokens, type TokenRegistry } from '@effectstream/mint-test-token-registry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchRegistry, MetadataUnavailableError, registryView } from './metadata';
 
 afterEach(() => vi.unstubAllGlobals());
 
+const unavailableRegistry: TokenRegistry = {
+  schemaVersion: '1.0.0',
+  registryRevision: 'unreleased',
+  status: 'unavailable',
+  generatedAt: '2026-09-07T00:00:00.000Z',
+  network: {
+    key: 'preprod',
+    displayName: 'Preprod',
+    protocolFamily: 'midnight-1.x',
+    networkId: 'preprod',
+    chainId: null,
+    stackIdentity: null,
+  },
+  compatibility: {
+    profile: 'v1',
+    compiler: '0.31.1',
+    compactRuntime: '0.16.0',
+    ledger: '8.1.0',
+    midnightJs: '4.1.1',
+    walletSdk: '1.2.0',
+  },
+  tokens: unavailableTokens(),
+};
+
 describe('runtime token registry', () => {
-  it('accepts the canonical six-token file and keeps unavailable identities empty', async () => {
-    const body = await readFile(resolve(import.meta.dirname, '../../../metadata/metadata.preprod.json'), 'utf8');
+  it('accepts the canonical six-token unavailable fixture and keeps identities empty', async () => {
+    const body = JSON.stringify(unavailableRegistry);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(body, {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
