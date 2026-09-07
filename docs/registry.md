@@ -154,6 +154,26 @@ faucet request, waits for all wallet streams under `MN_TIMEOUT_MS`, and requires
 the synchronized wallet to expose positive DUST before writing a deployment
 intent or submitting a transaction.
 
+Preprod may explicitly resume a completed wallet-cli SDK 1.2 checkpoint instead
+of scanning the same wallet history again. Install the isolated adapter cohort
+with `npm --prefix wallet-adapters/v1-sdk12 ci`, then supply the private
+`preprod/checkpoint.json` path as `MN_WALLET_CHECKPOINT_FILE`. The checkpoint and
+its sibling profile manifest must be owner-only files created for the same
+account-0/index-0 master seed. The runner accepts only the pinned SDK 1.2 cohort,
+the expected profile, network identity and chain genesis, and live matching
+cursor witnesses. It acquires and holds the wallet CLI profile's native
+`session.lock`, so it refuses to start while wallet-cli is still using that
+profile. After restore it again requires all three wallet streams to be fully
+synchronized and positive DUST before creating a deployment intent.
+
+Use the same command with `MN_WALLET_CHECKPOINT_VALIDATE_ONLY=1` for a read-only
+restore, chain-witness, synchronization and funding check. That mode stops
+before opening the deployment journal or creating an intent. A checkpoint-backed
+deployment records the exact facade 4.1.0 / wallet SDK 1.2.0 toolchain tuple;
+the original cold v1 route remains available and records the testkit 4.1.1 /
+wallet SDK 1.1.0 tuple. Checkpoints, manifests and wallet addresses remain
+private and must stay outside Git and public static artifacts.
+
 ## Issuer interface
 
 Both protocol packages expose immutable constructor metadata and `name()`,
