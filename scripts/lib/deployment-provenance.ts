@@ -11,6 +11,8 @@ import type {
   NetworkIdentity
 } from "../../packages/registry/src/types.js";
 
+const GIT_OBJECT_MAX_BUFFER = 64 * 1024 * 1024;
+
 export interface ChainDeploymentEvidence {
   transactionHash: string;
   blockHeight: string;
@@ -74,7 +76,10 @@ export function hashGitDirectory(repositoryRoot: string, requestedRevision: stri
   if (!files.length) throw new Error(`SOURCE_REVISION does not contain artifact directory: ${prefix}`);
   const hash = createHash("sha256");
   for (const path of files) {
-    const contents = execFileSync("git", ["show", `${revision}:${path}`], { cwd: repositoryRoot });
+    const contents = execFileSync("git", ["show", `${revision}:${path}`], {
+      cwd: repositoryRoot,
+      maxBuffer: GIT_OBJECT_MAX_BUFFER
+    });
     hash.update(relative(prefix, path));
     hash.update("\0");
     hash.update(contents);
