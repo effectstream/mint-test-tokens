@@ -37,6 +37,7 @@ import {
   hashDirectory,
   queryChainDeployment,
   resolveReproducibleSourceRevision,
+  sourcePathsForProfile,
   verifyEmbeddedCompilerMetadata
 } from "./lib/deployment-provenance.js";
 import { endpointConfig, rpc } from "./lib/network-config.js";
@@ -61,12 +62,7 @@ const COMPATIBILITY: CompatibilitySnapshot = {
 };
 const DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "4.1.1", walletSdk: "1.1.0" } as const;
 const EMBEDDED_COMPILER_VERSION = "0.31.1";
-const SOURCE_PATHS = [
-  "contracts/v1/shielded.compact",
-  "contracts/v1/unshielded.compact",
-  "contracts/v1/managed/shielded",
-  "contracts/v1/managed/unshielded"
-] as const;
+const SOURCE_PATHS = sourcePathsForProfile("v1");
 const TIMEOUT_MS = Number(process.env.MN_TIMEOUT_MS ?? 180_000);
 const command = process.argv[2] ?? "deploy";
 const rawNetwork = process.env.MN_NETWORK?.trim() ?? "undeployed";

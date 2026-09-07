@@ -16,6 +16,16 @@ export interface ChainDeploymentEvidence {
   blockHash: string;
 }
 
+export function sourcePathsForProfile(profile: "v1" | "v2"): readonly string[] {
+  const root = `contracts/${profile}`;
+  return [
+    `${root}/shielded-token.compact`,
+    `${root}/unshielded-token.compact`,
+    `${root}/managed/shielded`,
+    `${root}/managed/unshielded`
+  ];
+}
+
 export async function hashDirectory(directory: string): Promise<string> {
   const files: string[] = [];
   const visit = async (path: string): Promise<void> => {

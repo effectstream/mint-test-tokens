@@ -21,7 +21,11 @@ import {
   publishReadyRegistry,
   readyDeploymentsForNetwork
 } from "../scripts/lib/registry-publisher.js";
-import { assertDeploymentProvenance, resolveReproducibleSourceRevision } from "../scripts/lib/deployment-provenance.js";
+import {
+  assertDeploymentProvenance,
+  resolveReproducibleSourceRevision,
+  sourcePathsForProfile
+} from "../scripts/lib/deployment-provenance.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
 import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
 
@@ -329,5 +333,13 @@ test("requires source revision to resolve and match tracked source/artifact byte
     assert.throws(() => resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), /do not match/);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("both runtime profiles point at tracked issuer source and artifact trees", () => {
+  const repositoryRoot = process.cwd();
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).trim();
+  for (const profile of ["v1", "v2"] as const) {
+    assert.equal(resolveReproducibleSourceRevision(repositoryRoot, revision, sourcePathsForProfile(profile)), revision);
   }
 });
