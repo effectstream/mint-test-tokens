@@ -16,6 +16,16 @@ export interface ChainDeploymentEvidence {
   blockHash: string;
 }
 
+export function sourcePathsForProfile(profile: "v1" | "v2"): readonly string[] {
+  const root = `contracts/${profile}`;
+  return [
+    `${root}/shielded-token.compact`,
+    `${root}/unshielded-token.compact`,
+    `${root}/managed/shielded`,
+    `${root}/managed/unshielded`
+  ];
+}
+
 export async function hashDirectory(directory: string): Promise<string> {
   const files: string[] = [];
   const visit = async (path: string): Promise<void> => {
@@ -75,7 +85,11 @@ export function resolveReproducibleSourceRevision(
     "git", ["ls-files", "--others", "--exclude-standard", "--", ...relevantPaths],
     { cwd: repositoryRoot, encoding: "utf8" }
   ).trim();
-  const mismatches = [changed, untracked].filter(Boolean).join("\n");
+  const ignored = execFileSync(
+    "git", ["ls-files", "--others", "--ignored", "--exclude-standard", "--", ...relevantPaths],
+    { cwd: repositoryRoot, encoding: "utf8" }
+  ).trim();
+  const mismatches = [changed, untracked, ignored].filter(Boolean).join("\n");
   if (mismatches) throw new Error(`Source/artifact bytes do not match SOURCE_REVISION ${revision}:\n${mismatches}`);
   return revision;
 }

@@ -14,6 +14,14 @@ import { withFileLock, writeJsonAtomic } from "./atomic-json.js";
 
 export type DeploymentSet = ReadonlyMap<TokenSymbol, DeploymentRecord>;
 
+const sameNetworkIdentity = (left: NetworkIdentity, right: NetworkIdentity): boolean =>
+  left.key === right.key &&
+  left.displayName === right.displayName &&
+  left.protocolFamily === right.protocolFamily &&
+  left.networkId === right.networkId &&
+  left.chainId === right.chainId &&
+  left.stackIdentity === right.stackIdentity;
+
 export function metadataOutputPath(repositoryRoot: string, networkKey: NetworkIdentity["key"], configuredDirectory?: string): string {
   const directory = resolve(configuredDirectory?.trim() || resolve(repositoryRoot, "metadata"));
   return resolve(directory, `metadata.${networkKey}.json`);
@@ -42,7 +50,7 @@ export function readyDeploymentsForNetwork(
   if (!registry || registry.status !== "ready") return new Map();
   const validation = validateRegistry(registry, network.key);
   if (!validation.ok) throw new Error(`Cannot recover from invalid ready registry:\n${validation.errors.join("\n")}`);
-  if (JSON.stringify(registry.network) !== JSON.stringify(network)) return new Map();
+  if (!sameNetworkIdentity(registry.network, network)) return new Map();
   const deployments = new Map<TokenSymbol, DeploymentRecord>();
   for (const token of registry.tokens) {
     const active = token.deployments.find((item) => item.status === "active" && item.deploymentId === token.activeDeploymentId);
