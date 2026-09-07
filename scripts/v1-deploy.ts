@@ -51,6 +51,7 @@ import {
   readRegistry,
   readyDeploymentsForNetwork
 } from "./lib/registry-publisher.js";
+import { validateMasterSeedHex } from "./lib/wallet-seed.js";
 
 const COMPATIBILITY: CompatibilitySnapshot = {
   profile: "v1",
@@ -193,9 +194,8 @@ async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol,
 
 async function deployAll(): Promise<void> {
   const seedPath = process.env.MN_SEED_FILE?.trim();
-  if (!seedPath) throw new Error("Set MN_SEED_FILE to a private file containing exactly 32 bytes of hex");
-  const seed = (await readFile(resolve(seedPath), "utf8")).trim();
-  if (!/^[0-9a-f]{64}$/i.test(seed)) throw new Error("MN_SEED_FILE must contain exactly 32 bytes of hex");
+  if (!seedPath) throw new Error("Set MN_SEED_FILE to a private file containing exactly 32 or 64 bytes of hexadecimal master seed");
+  const seed = validateMasterSeedHex((await readFile(resolve(seedPath), "utf8")).trim());
   const identity = await stackIdentity();
   const previousRegistry = await readRegistry(outputPath);
   if (previousRegistry?.status === "ready" && previousRegistry.network.key === identity.key &&

@@ -26,6 +26,7 @@ import {
   resolveReproducibleSourceRevision,
   sourcePathsForProfile
 } from "../scripts/lib/deployment-provenance.js";
+import { validateMasterSeedHex } from "../scripts/lib/wallet-seed.js";
 import { TOKEN_DEFINITIONS } from "../packages/registry/src/tokens.js";
 import type { CompatibilitySnapshot, DeploymentRecord, NetworkIdentity, TokenSymbol } from "../packages/registry/src/types.js";
 
@@ -45,6 +46,14 @@ const compatibility: CompatibilitySnapshot = {
   midnightJs: "4.1.1",
   walletSdk: "1.1.0"
 };
+
+test("accepts only supported 32-byte and 64-byte hexadecimal master seeds", () => {
+  assert.equal(validateMasterSeedHex("a5".repeat(32)), "a5".repeat(32));
+  assert.equal(validateMasterSeedHex("B6".repeat(64)), "B6".repeat(64));
+  for (const invalid of ["", "a5".repeat(31), "a5".repeat(33), "a5".repeat(63), "a5".repeat(65), "zz".repeat(32)]) {
+    assert.throws(() => validateMasterSeedHex(invalid), /32 or 64 bytes/);
+  }
+});
 
 const records = (suffix: string): Map<TokenSymbol, DeploymentRecord> => new Map(TOKEN_DEFINITIONS.map((token, index) => [
   token.symbol,
