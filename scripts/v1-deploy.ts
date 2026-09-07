@@ -62,10 +62,16 @@ const COMPATIBILITY: CompatibilitySnapshot = {
   midnightJs: "4.1.1",
   walletSdk: "1.2.0"
 };
-const DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "4.1.1", walletSdk: "1.1.0" } as const;
+const TESTKIT_DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "4.1.1", walletSdk: "1.1.0" } as const;
+const SDK12_DEPLOYMENT_TOOLCHAIN = { runner: "@midnightntwrk/wallet-sdk-facade", runnerVersion: "4.1.0", walletSdk: "1.2.0" } as const;
 const EMBEDDED_COMPILER_VERSION = "0.31.1";
 const SOURCE_PATHS = sourcePathsForProfile("v1");
 const TIMEOUT_MS = Number(process.env.MN_TIMEOUT_MS ?? 180_000);
+const checkpointValidateOnlyValue = process.env.MN_WALLET_CHECKPOINT_VALIDATE_ONLY?.trim();
+if (checkpointValidateOnlyValue !== undefined && checkpointValidateOnlyValue !== "1") {
+  throw new Error("MN_WALLET_CHECKPOINT_VALIDATE_ONLY, when set, must equal 1");
+}
+const checkpointValidateOnly = checkpointValidateOnlyValue === "1";
 const command = process.argv[2] ?? "deploy";
 const rawNetwork = process.env.MN_NETWORK?.trim() ?? "undeployed";
 if (!(["preview", "preprod", "undeployed"] as string[]).includes(rawNetwork)) {
@@ -76,8 +82,25 @@ const endpoints = endpointConfig(networkKey);
 const root = resolve(new URL("..", import.meta.url).pathname);
 const outputPath = metadataOutputPath(root, networkKey, process.env.MN_METADATA_OUTPUT_DIR);
 
+interface HeldWalletCliProfileLock {
+  verify(): Promise<void>;
+  release(): Promise<void>;
+}
+
 class DeploymentVerificationError extends Error {}
 class MissingContractError extends DeploymentVerificationError {}
+
+const deploymentToolchainForRecord = (record: DeploymentRecord): typeof TESTKIT_DEPLOYMENT_TOOLCHAIN | typeof SDK12_DEPLOYMENT_TOOLCHAIN => {
+  const value = record.deploymentToolchain;
+  if (!value) throw new DeploymentVerificationError(`${record.deploymentId}: missing v1 deployment toolchain tuple`);
+  if (value.runner === TESTKIT_DEPLOYMENT_TOOLCHAIN.runner && value.runnerVersion === TESTKIT_DEPLOYMENT_TOOLCHAIN.runnerVersion && value.walletSdk === TESTKIT_DEPLOYMENT_TOOLCHAIN.walletSdk) {
+    return TESTKIT_DEPLOYMENT_TOOLCHAIN;
+  }
+  if (value.runner === SDK12_DEPLOYMENT_TOOLCHAIN.runner && value.runnerVersion === SDK12_DEPLOYMENT_TOOLCHAIN.runnerVersion && value.walletSdk === SDK12_DEPLOYMENT_TOOLCHAIN.walletSdk) {
+    return SDK12_DEPLOYMENT_TOOLCHAIN;
+  }
+  throw new DeploymentVerificationError(`${record.deploymentId}: unsupported v1 deployment toolchain tuple`);
+};
 
 const withTimeout = async <T>(label: string, operation: Promise<T>): Promise<T> => {
   let timer: NodeJS.Timeout | undefined;
@@ -180,7 +203,7 @@ async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol,
     assertDeploymentProvenance(record, {
       network: currentNetwork,
       compatibility: COMPATIBILITY,
-      deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+      deploymentToolchain: deploymentToolchainForRecord(record),
       sourceRevision,
       compilerVersion: COMPATIBILITY.compiler,
       artifactSha256,
@@ -193,10 +216,13 @@ async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol,
   return verified;
 }
 
-async function deployAll(): Promise<void> {
+async function deployAll(checkpointLock?: HeldWalletCliProfileLock): Promise<void> {
   const seedPath = process.env.MN_SEED_FILE?.trim();
   if (!seedPath) throw new Error("Set MN_SEED_FILE to a private file containing exactly 32 or 64 bytes of hexadecimal master seed");
   const seed = validateMasterSeedHex((await readFile(resolve(seedPath), "utf8")).trim());
+  const checkpointPath = process.env.MN_WALLET_CHECKPOINT_FILE?.trim();
+  if ((checkpointPath !== undefined) !== (checkpointLock !== undefined)) throw new Error("SDK1.2 checkpoint deployment requires its wallet-cli profile lock");
+  if (checkpointPath && networkKey !== "preprod") throw new Error("MN_WALLET_CHECKPOINT_FILE is supported only with MN_NETWORK=preprod");
   const identity = await stackIdentity();
   const previousRegistry = await readRegistry(outputPath);
   if (previousRegistry?.status === "ready" && previousRegistry.network.key === identity.key &&
@@ -219,19 +245,35 @@ async function deployAll(): Promise<void> {
       : NetworkId.NetworkId.Undeployed;
   setNetworkId(endpoints.networkId);
   const logger = pino({ level: "silent" });
-  const wallet = await withTimeout("wallet build", MidnightWalletProvider.build(logger, {
-    walletNetworkId,
-    networkId: endpoints.networkId,
-    indexer: endpoints.indexer,
-    indexerWS: endpoints.indexerWS,
-    node: endpoints.node,
-    nodeWS: endpoints.nodeWS,
-    proofServer: endpoints.proofServer,
-    faucet: undefined
-  }, seed));
+  await checkpointLock?.verify();
+  const restored = checkpointPath ? await import("../wallet-adapters/v1-sdk12/provider.js").then(({ restoreSdk12DeploymentWallet }) => restoreSdk12DeploymentWallet({
+    checkpointPath,
+    endpoints,
+    masterSeedHex: seed,
+    timeoutMs: TIMEOUT_MS
+  })) : undefined;
+  const wallet: MidnightWalletProvider = restored
+    ? restored.provider as unknown as MidnightWalletProvider
+    : await withTimeout("wallet build", MidnightWalletProvider.build(logger, {
+      walletNetworkId,
+      networkId: endpoints.networkId,
+      indexer: endpoints.indexer,
+      indexerWS: endpoints.indexerWS,
+      node: endpoints.node,
+      nodeWS: endpoints.nodeWS,
+      proofServer: endpoints.proofServer,
+      faucet: undefined
+    }, seed));
+  const deploymentToolchain = restored?.toolchain ?? TESTKIT_DEPLOYMENT_TOOLCHAIN;
   try {
-    await withTimeout("wallet start", wallet.start(false));
-    await waitForFundedDeploymentWallet(wallet.wallet, TIMEOUT_MS);
+    const walletStart = wallet.start(false);
+    if (checkpointPath) await walletStart;
+    else await withTimeout("wallet start", walletStart);
+    const funded = await waitForFundedDeploymentWallet(
+      wallet.wallet as unknown as Parameters<typeof waitForFundedDeploymentWallet>[0],
+      TIMEOUT_MS
+    );
+    await checkpointLock?.verify();
     await withFileLock(journalPath, async () => {
       const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
       const canonicalRecords = readyDeploymentsForNetwork(previousRegistry, identity);
@@ -275,7 +317,7 @@ async function deployAll(): Promise<void> {
           assertDeploymentProvenance(recovered, {
             network: identity,
             compatibility: COMPATIBILITY,
-            deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+            deploymentToolchain: deploymentToolchainForRecord(recovered),
             sourceRevision: pendingSourceRevision,
             compilerVersion: COMPATIBILITY.compiler,
             artifactSha256,
@@ -313,7 +355,7 @@ async function deployAll(): Promise<void> {
             assertDeploymentProvenance(refreshed, {
               network: identity,
               compatibility: COMPATIBILITY,
-              deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+              deploymentToolchain: deploymentToolchainForRecord(refreshed),
               sourceRevision: priorSourceRevision,
               compilerVersion: COMPATIBILITY.compiler,
               artifactSha256,
@@ -334,7 +376,7 @@ async function deployAll(): Promise<void> {
           }
         }
         const path = artifactPath(token.privacy);
-        const providers = initializeMidnightProviders(wallet, {
+        const providers = initializeMidnightProviders(wallet as MidnightWalletProvider, {
           walletNetworkId,
           networkId: endpoints.networkId,
           indexer: endpoints.indexer,
@@ -350,14 +392,16 @@ async function deployAll(): Promise<void> {
           CompiledContract.withCompiledFileAssets(path)
         );
         const artifactSha256 = await hashDirectory(path);
+        await checkpointLock?.verify();
         journal = beginDeployment(journal, token.symbol, new Date().toISOString());
         await saveJournal();
         let deployed;
         try {
-          deployed = await withTimeout(`${token.symbol} deploy`, deployContract(providers as never, {
+          const deployment = deployContract(providers as never, {
             compiledContract: compiled as never,
             args: [token.name, token.symbol, BigInt(token.decimals), encodeDomainSeparator(token.domainSeparator)]
-          } as never));
+          } as never);
+          deployed = checkpointPath ? await deployment : await withTimeout(`${token.symbol} deploy`, deployment);
         } catch (error) {
           throw new Error(`${token.symbol}: deployment outcome is uncertain and remains marked in the private journal; reconcile the chain before retrying. ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -373,7 +417,7 @@ async function deployAll(): Promise<void> {
           verifiedAt: asDate(publicTx.blockTimestamp),
           network: identity,
           compatibility: COMPATIBILITY,
-          deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+          deploymentToolchain,
           confirmation: { blockHeight: String(publicTx.blockHeight), blockHash: publicTx.blockHash },
           maintenanceAuthority: { status: "unknown", address: null },
           artifact: {
@@ -398,7 +442,7 @@ async function deployAll(): Promise<void> {
         assertDeploymentProvenance(record, {
           network: identity,
           compatibility: COMPATIBILITY,
-          deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
+          deploymentToolchain,
           sourceRevision,
           compilerVersion: COMPATIBILITY.compiler,
           artifactSha256,
@@ -426,8 +470,47 @@ async function deployAll(): Promise<void> {
   }
 }
 
+async function validateCheckpointDeploymentWallet(checkpointPath: string, checkpointLock: HeldWalletCliProfileLock): Promise<void> {
+  const seedPath = process.env.MN_SEED_FILE?.trim();
+  if (!seedPath) throw new Error("Set MN_SEED_FILE to a private file containing exactly 32 or 64 bytes of hexadecimal master seed");
+  const seed = validateMasterSeedHex((await readFile(resolve(seedPath), "utf8")).trim());
+  await checkpointLock.verify();
+  const { restoreSdk12DeploymentWallet } = await import("../wallet-adapters/v1-sdk12/provider.js");
+  const restored = await restoreSdk12DeploymentWallet({ checkpointPath, endpoints, masterSeedHex: seed, timeoutMs: TIMEOUT_MS });
+  const wallet = restored.provider as unknown as MidnightWalletProvider;
+  try {
+    await wallet.start(false);
+    const funded = await waitForFundedDeploymentWallet(
+      wallet.wallet as unknown as Parameters<typeof waitForFundedDeploymentWallet>[0],
+      TIMEOUT_MS
+    );
+    await checkpointLock.verify();
+    console.log(`[wallet-checkpoint] generation=${restored.checkpointGeneration} synchronized=${funded.isSynced} funded=true`);
+  } finally {
+    await wallet.stop();
+  }
+}
+
 if (command === "deploy") {
-  await withFileLock(`${outputPath}.deployment-workflow`, deployAll);
+  const checkpointPath = process.env.MN_WALLET_CHECKPOINT_FILE?.trim();
+  if (checkpointValidateOnly && !checkpointPath) throw new Error("MN_WALLET_CHECKPOINT_VALIDATE_ONLY requires MN_WALLET_CHECKPOINT_FILE");
+  if (checkpointPath && networkKey !== "preprod") throw new Error("MN_WALLET_CHECKPOINT_FILE is supported only with MN_NETWORK=preprod");
+  if (checkpointValidateOnly) {
+    const [{ checkpointProfileLockPath }, { withWalletCliProfileLock }] = await Promise.all([
+      import("../wallet-adapters/v1-sdk12/checkpoint.js"),
+      import("../wallet-adapters/v1-sdk12/profile-lock.js")
+    ]);
+    await withWalletCliProfileLock(checkpointProfileLockPath(checkpointPath!), (lock) => validateCheckpointDeploymentWallet(checkpointPath!, lock));
+  } else {
+    await withFileLock(`${outputPath}.deployment-workflow`, async () => {
+      if (!checkpointPath) return deployAll();
+      const [{ checkpointProfileLockPath }, { withWalletCliProfileLock }] = await Promise.all([
+        import("../wallet-adapters/v1-sdk12/checkpoint.js"),
+        import("../wallet-adapters/v1-sdk12/profile-lock.js")
+      ]);
+      await withWalletCliProfileLock(checkpointProfileLockPath(checkpointPath), (lock) => deployAll(lock));
+    });
+  }
 } else if (command === "verify") {
   setNetworkId(endpoints.networkId);
   const registry = await readRegistry(outputPath);
