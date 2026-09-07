@@ -25,4 +25,15 @@ The static minting directory lives in [`frontend/`](frontend/README.md). It
 loads the registry at runtime, connects a compatible Midnight wallet, reads
 the exact shielded and unshielded balances, and submits fixed faucet amounts
 through isolated Midnight 1.x and 2.x browser adapters.
-Native Midnight test tokens, canonical network metadata, and a static minting site
+
+Release uploads must use the exact-commit Docker export documented in the
+[frontend release procedure](frontend/README.md#verified-release-export). Do
+not upload `frontend/dist` from a working checkout: it may contain an older host
+build even when a disposable Docker gate passed. The publishable directory and
+its SHA-256/provenance sidecars identify the source commit that was actually
+tested.
+
+A preview may honestly publish registries whose status is `unavailable`, with
+no active deployment identities and disabled mint controls. Describe that URL
+as an unavailable-token preview. A mint-ready public release requires the
+tracked registry and on-chain deployment checks to pass first.

@@ -57,15 +57,98 @@ registry files, and applies static security headers. The catch-all security rule
 does not set caching, which prevents Cloudflare Pages from merging a second
 `Cache-Control` value into metadata responses. No Pages Function is required.
 
-For a direct upload after a verified build:
+### Verified release export
+
+Do not upload `frontend/dist` from the working checkout. Docker gates build in
+a disposable filesystem, while the host directory can still contain bytes from
+an earlier commit. Export a release from an exact clean commit and keep its
+manifest and provenance beside the publishable directory.
+
+From the repository root, this reproduces the verified export procedure. It
+uses `git archive`, so ignored host build output cannot enter the container.
 
 ```sh
-npx --prefix frontend wrangler pages deploy frontend/dist --project-name mint-test-tokens
+release_sha="$(git rev-parse HEAD)"
+release_tag="$(git rev-parse --short=7 "$release_sha")"
+release_dir="/private/tmp/mint-test-tokens-release-$release_tag"
+evidence_dir="$release_dir-evidence"
+source_archive="/private/tmp/mint-test-tokens-source-$release_tag.tar"
+
+test -z "$(git status --porcelain)"
+mkdir "$release_dir" "$evidence_dir"
+git archive --format=tar --output="$source_archive" "$release_sha"
+
+docker run --rm -i \
+  -e RELEASE_SHA="$release_sha" \
+  -v "$source_archive:/input/source.tar:ro" \
+  -v "$release_dir:/release" \
+  -v "$evidence_dir:/evidence" \
+  node:24.15.0-bookworm sh -eu <<'DOCKER'
+mkdir /work
+tar -xf /input/source.tar -C /work
+cd /work
+
+npm ci
+npm --prefix frontend ci
+npm --prefix frontend/protocols/v1 ci
+npm --prefix frontend/protocols/v2 ci
+npm --prefix frontend test
+npm --prefix frontend run build
+
+test ! -e frontend/dist/metadata.undeployed.json
+cmp frontend/public/_headers frontend/dist/_headers
+test -s frontend/dist/contract/v1/receiver/keys/receiveShieldedTokenFromIssuer.prover
+test -s frontend/dist/contract/v1/receiver/keys/receiveUnshieldedTokenFromIssuer.verifier
+test -s frontend/dist/contract/v2/receiver/zkir/receiveShieldedTokenFromIssuer.bzkir
+test -s frontend/dist/contract/v2/receiver/zkir/receiveUnshieldedTokenFromIssuer.zkir
+(cd frontend/dist && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > /tmp/build.SHA256SUMS
+cp -a frontend/dist/. /release/
+(cd /release && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > /evidence/SHA256SUMS
+cmp /tmp/build.SHA256SUMS /evidence/SHA256SUMS
+
+file_count="$(find /release -type f | wc -l | tr -d ' ')"
+total_file_bytes="$(find /release -type f -printf '%s\n' | awk '{sum += $1} END {print sum}')"
+largest_file="$(find /release -type f -printf '%s %P\n' | LC_ALL=C sort -nr | head -1)"
+largest_bytes="$(printf '%s\n' "$largest_file" | cut -d ' ' -f 1)"
+test "$file_count" -le 20000
+test "$largest_bytes" -lt 26214400
+
+cat > /evidence/PROVENANCE.txt <<EOF
+source_commit=$RELEASE_SHA
+builder=node:24.15.0-bookworm
+test_result=passed
+manifest=SHA256SUMS
+file_count=$file_count
+total_file_bytes=$total_file_bytes
+largest_file=$largest_file
+pages_file_count_limit=20000
+pages_per_file_limit_bytes=26214400
+export_matches_tested_build_sha256=true
+EOF
+
+(cd /release && sha256sum -c /evidence/SHA256SUMS)
+DOCKER
+
+rm "$source_archive"
 ```
 
-Publication must happen only after the public registry has verified on-chain
-identities. The local `metadata.undeployed.json` file remains ignored and must
-not be copied into `frontend/dist`.
+Upload `$release_dir` itself. Keep `$evidence_dir` as the review record; do not
+publish the sidecars as site assets. The source commit in `PROVENANCE.txt` and
+every entry in `SHA256SUMS` must be checked before deployment. Never relabel an
+existing artifact with a newer commit.
+
+```sh
+npx --prefix frontend wrangler pages deploy "$release_dir" --project-name mint-test-tokens
+```
+
+An explicitly labeled preview may contain the tracked public registries in
+their intentional `unavailable` state, with empty deployments and no canonical
+addresses. Mint-ready publication requires verified on-chain identities and a
+ready semantic registry. In either case, verify the deployed home page, all
+three public JSON files byte-for-byte, wildcard JSON CORS, their single cache
+policy, representative v1/v2 artifacts, and 404 responses for
+`metadata.undeployed.json` and a missing artifact. The local undeployed file
+must never appear in the release directory.
 
 ## Wallet behavior
 
