@@ -266,7 +266,9 @@ async function deployAll(checkpointLock?: HeldWalletCliProfileLock): Promise<voi
     }, seed));
   const deploymentToolchain = restored?.toolchain ?? TESTKIT_DEPLOYMENT_TOOLCHAIN;
   try {
-    await withTimeout("wallet start", wallet.start(false));
+    const walletStart = wallet.start(false);
+    if (checkpointPath) await walletStart;
+    else await withTimeout("wallet start", walletStart);
     const funded = await waitForFundedDeploymentWallet(
       wallet.wallet as unknown as Parameters<typeof waitForFundedDeploymentWallet>[0],
       TIMEOUT_MS
@@ -395,10 +397,11 @@ async function deployAll(checkpointLock?: HeldWalletCliProfileLock): Promise<voi
         await saveJournal();
         let deployed;
         try {
-          deployed = await withTimeout(`${token.symbol} deploy`, deployContract(providers as never, {
+          const deployment = deployContract(providers as never, {
             compiledContract: compiled as never,
             args: [token.name, token.symbol, BigInt(token.decimals), encodeDomainSeparator(token.domainSeparator)]
-          } as never));
+          } as never);
+          deployed = checkpointPath ? await deployment : await withTimeout(`${token.symbol} deploy`, deployment);
         } catch (error) {
           throw new Error(`${token.symbol}: deployment outcome is uncertain and remains marked in the private journal; reconcile the chain before retrying. ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -476,7 +479,7 @@ async function validateCheckpointDeploymentWallet(checkpointPath: string, checkp
   const restored = await restoreSdk12DeploymentWallet({ checkpointPath, endpoints, masterSeedHex: seed, timeoutMs: TIMEOUT_MS });
   const wallet = restored.provider as unknown as MidnightWalletProvider;
   try {
-    await withTimeout("wallet start", wallet.start(false));
+    await wallet.start(false);
     const funded = await waitForFundedDeploymentWallet(
       wallet.wallet as unknown as Parameters<typeof waitForFundedDeploymentWallet>[0],
       TIMEOUT_MS

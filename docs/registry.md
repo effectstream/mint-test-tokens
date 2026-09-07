@@ -174,6 +174,15 @@ the original cold v1 route remains available and records the testkit 4.1.1 /
 wallet SDK 1.1.0 tuple. Checkpoints, manifests and wallet addresses remain
 private and must stay outside Git and public static artifacts.
 
+The checkpoint route awaits wallet startup and each deployment operation without
+an internal `Promise.race`: those SDK operations do not expose cancellation, so
+an internal timer could release the wallet CLI profile lock while signing or
+submission was still active. Run this command through an operating-system
+process supervisor with a wall-clock limit. If the supervisor terminates the
+process, the kernel releases the profile lock and the private deployment journal
+retains the pre-submission intent for mandatory chain reconciliation before any
+retry.
+
 ## Issuer interface
 
 Both protocol packages expose immutable constructor metadata and `name()`,
