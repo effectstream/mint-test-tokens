@@ -7,13 +7,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('runtime token registry', () => {
   it('accepts the canonical six-token file and keeps unavailable identities empty', async () => {
-    const body = await readFile(resolve(import.meta.dirname, '../../../metadata/metadata.preview.json'), 'utf8');
+    const body = await readFile(resolve(import.meta.dirname, '../../../metadata/metadata.preprod.json'), 'utf8');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(body, {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     })));
 
-    const registry = await fetchRegistry('preview');
+    const registry = await fetchRegistry('preprod');
     const view = registryView(registry);
 
     expect(view.tokens.map((token) => token.symbol)).toEqual([
