@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "1.0.0",
+  "registryRevision": "unreleased",
+  "status": "unavailable",
+  "generatedAt": "2026-09-07T00:00:00.000Z",
+  "network": {
+    "key": "stagenet",
+    "displayName": "Stagenet",
+    "protocolFamily": "midnight-2.x",
+    "networkId": "stagenet",
+    "chainId": "midnight_stagenet",
+    "stackIdentity": null
+  },
+  "compatibility": {
+    "profile": "v2",
+    "compiler": "0.33.0-rc.2",
+    "compactRuntime": "0.18.0-rc.1",
+    "ledger": "1.0.0-rc.3",
+    "midnightJs": "5.0.0-beta.6",
+    "walletSdk": "2.0.0-beta.2"
+  },
+  "tokens": [
+    {
+      "symbol": "twBTC",
+      "name": "Test-wrapped BTC",
+      "decimals": 8,
+      "privacy": "shielded",
+      "domainSeparator": "mint-test-tokens:twBTC",
+      "faucet": {
+        "humanAmount": "1",
+        "baseUnits": "100000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    },
+    {
+      "symbol": "twETH",
+      "name": "Test-wrapped ETH",
+      "decimals": 18,
+      "privacy": "shielded",
+      "domainSeparator": "mint-test-tokens:twETH",
+      "faucet": {
+        "humanAmount": "5",
+        "baseUnits": "5000000000000000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    },
+    {
+      "symbol": "twUSDC",
+      "name": "Test-wrapped USDC",
+      "decimals": 6,
+      "privacy": "shielded",
+      "domainSeparator": "mint-test-tokens:twUSDC",
+      "faucet": {
+        "humanAmount": "10000",
+        "baseUnits": "10000000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    },
+    {
+      "symbol": "twUSDM",
+      "name": "Test-wrapped USDM",
+      "decimals": 6,
+      "privacy": "shielded",
+      "domainSeparator": "mint-test-tokens:twUSDM",
+      "faucet": {
+        "humanAmount": "10000",
+        "baseUnits": "10000000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    },
+    {
+      "symbol": "utwUSDC",
+      "name": "Unshielded-test-wrapped USDC",
+      "decimals": 6,
+      "privacy": "unshielded",
+      "domainSeparator": "mint-test-tokens:utwUSDC",
+      "faucet": {
+        "humanAmount": "10000",
+        "baseUnits": "10000000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    },
+    {
+      "symbol": "utwBTC",
+      "name": "Unshielded-test-wrapped BTC",
+      "decimals": 8,
+      "privacy": "unshielded",
+      "domainSeparator": "mint-test-tokens:utwBTC",
+      "faucet": {
+        "humanAmount": "1",
+        "baseUnits": "100000000"
+      },
+      "activeDeploymentId": null,
+      "deployments": []
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.log
+metadata.undeployed.json
+**/metadata.undeployed.json
+.env
+.env.*
+!.env.example

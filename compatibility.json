@@ -1,0 +1,17 @@
+{
+  "v1": {
+    "status": "stable", "networks": ["preview", "preprod", "undeployed"],
+    "node": "1.0.1 preview / 1.0.2 preprod / 1.0.0 local", "compiler": "0.31.1",
+    "language": "0.23", "compactJs": "2.5.1", "compactRuntime": "0.16.0",
+    "ledger": "8.1.0", "midnightJs": "4.1.1", "walletSdk": "1.2.0",
+    "proofServer": "8.1.0", "indexer": "4.3.5 preview / 4.3.3-hotfix preprod"
+  },
+  "v2": {
+    "status": "prerelease", "networks": ["stagenet", "undeployed"],
+    "networkId": "stagenet", "chainId": "midnight_stagenet", "node": "2.0.0-rc.4",
+    "compiler": "0.33.0-rc.2", "language": "0.23", "compactJs": "2.5.5-rc.7",
+    "compactRuntime": "0.18.0-rc.1", "ledger": "1.0.0-rc.3",
+    "midnightJs": "5.0.0-beta.6", "walletSdk": "2.0.0-beta.2",
+    "proofServer": "9.0.0-rc.5", "indexer": "4.4.0-rc.1", "endpoints": null
+  }
+}

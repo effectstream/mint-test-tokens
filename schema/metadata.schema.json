@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/effectstream/mint-test-tokens/raw/main/schema/metadata.schema.json",
+  "title": "Effectstream Midnight test-token registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "registryRevision", "status", "generatedAt", "network", "compatibility", "tokens"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "registryRevision": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["unavailable", "deploying", "ready", "stale"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "displayName", "protocolFamily", "networkId", "chainId", "stackIdentity"],
+      "properties": {
+        "key": { "enum": ["preview", "preprod", "stagenet", "undeployed"] },
+        "displayName": { "type": "string", "minLength": 1 },
+        "protocolFamily": { "enum": ["midnight-1.x", "midnight-2.x"] },
+        "networkId": { "type": "string", "minLength": 1 },
+        "chainId": { "type": ["string", "null"] },
+        "stackIdentity": { "type": ["string", "null"] }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "compiler", "compactRuntime", "ledger", "midnightJs", "walletSdk"],
+      "properties": {
+        "profile": { "enum": ["v1", "v2"] },
+        "compiler": { "type": "string", "minLength": 1 },
+        "compactRuntime": { "type": "string", "minLength": 1 },
+        "ledger": { "type": "string", "minLength": 1 },
+        "midnightJs": { "type": "string", "minLength": 1 },
+        "walletSdk": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tokens": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/token" }
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "name", "decimals", "privacy", "domainSeparator", "faucet", "activeDeploymentId", "deployments"],
+      "properties": {
+        "symbol": { "enum": ["twBTC", "twETH", "twUSDC", "twUSDM", "utwUSDC", "utwBTC"] },
+        "name": { "type": "string", "minLength": 1 },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "privacy": { "enum": ["shielded", "unshielded"] },
+        "domainSeparator": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "faucet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["humanAmount", "baseUnits"],
+          "properties": {
+            "humanAmount": { "type": "string", "pattern": "^[1-9][0-9]*(\\.[0-9]+)?$" },
+            "baseUnits": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+          }
+        },
+        "activeDeploymentId": { "type": ["string", "null"] },
+        "deployments": { "type": "array", "items": { "$ref": "#/$defs/deployment" } }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deploymentId", "status", "contractAddress", "tokenId", "deploymentTransaction", "deployedAt", "verifiedAt", "artifact"],
+      "properties": {
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "superseded"] },
+        "contractAddress": { "type": "string", "minLength": 1 },
+        "tokenId": { "type": "string", "minLength": 1 },
+        "deploymentTransaction": { "type": "string", "minLength": 1 },
+        "deployedAt": { "type": "string", "format": "date-time" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceRevision", "compilerVersion", "artifactSha256", "openZeppelinRelease"],
+          "properties": {
+            "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "compilerVersion": { "type": "string", "minLength": 1 },
+            "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "openZeppelinRelease": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
