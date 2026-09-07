@@ -183,6 +183,18 @@ process, the kernel releases the profile lock and the private deployment journal
 retains the pre-submission intent for mandatory chain reconciliation before any
 retry.
 
+The Preprod public mint/discovery smoke command supports the same
+`MN_WALLET_CHECKPOINT_FILE` after the registry is ready. It requires
+`MN_SKIP_RECIPIENT_SPEND=1`: the restored funded signer must be fully synchronized
+with positive DUST, while the fresh recipient waits only for its shielded and
+unshielded streams because it does not construct a return transaction. Run
+`npm run test:wallet:v1` through the same kind of operating-system wall-clock
+supervisor. Each token prints an intent line before transaction construction, a
+public transaction ID after confirmation, and a separate discovery line after
+the recipient balance is observed. Preserve the private supervisor log and
+reconcile any intent without a confirmation line before retry; a confirmed mint
+without a discovery line must be observed without submitting a replacement.
+
 ## Issuer interface
 
 Both protocol packages expose immutable constructor metadata and `name()`,
