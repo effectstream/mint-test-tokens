@@ -9,6 +9,14 @@ export type ImpureCircuits<PS> = {
                                  color: Uint8Array,
                                  value: bigint
                                }): __compactRuntime.CircuitResults<PS, []>;
+  receiveShieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                 issuerAddress_0: Uint8Array,
+                                 mintEntryPoint_0: Uint8Array,
+                                 issuerCallCommitment_0: bigint,
+                                 coin_0: { nonce: Uint8Array,
+                                           color: Uint8Array,
+                                           value: bigint
+                                         }): __compactRuntime.CircuitResults<PS, []>;
   spendShieldedToken(context: __compactRuntime.CircuitContext<PS>,
                      recipient_0: { is_left: boolean,
                                     left: { bytes: Uint8Array },
@@ -23,6 +31,12 @@ export type ImpureCircuits<PS> = {
   receiveUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                          color_0: Uint8Array,
                          amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  receiveUnshieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                   issuerAddress_0: Uint8Array,
+                                   mintEntryPoint_0: Uint8Array,
+                                   issuerCallCommitment_0: bigint,
+                                   color_0: Uint8Array,
+                                   amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   spendUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                        recipient_0: { is_left: boolean,
                                       left: { bytes: Uint8Array },
@@ -40,6 +54,14 @@ export type ProvableCircuits<PS> = {
                                  color: Uint8Array,
                                  value: bigint
                                }): __compactRuntime.CircuitResults<PS, []>;
+  receiveShieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                 issuerAddress_0: Uint8Array,
+                                 mintEntryPoint_0: Uint8Array,
+                                 issuerCallCommitment_0: bigint,
+                                 coin_0: { nonce: Uint8Array,
+                                           color: Uint8Array,
+                                           value: bigint
+                                         }): __compactRuntime.CircuitResults<PS, []>;
   spendShieldedToken(context: __compactRuntime.CircuitContext<PS>,
                      recipient_0: { is_left: boolean,
                                     left: { bytes: Uint8Array },
@@ -54,6 +76,12 @@ export type ProvableCircuits<PS> = {
   receiveUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                          color_0: Uint8Array,
                          amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  receiveUnshieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                   issuerAddress_0: Uint8Array,
+                                   mintEntryPoint_0: Uint8Array,
+                                   issuerCallCommitment_0: bigint,
+                                   color_0: Uint8Array,
+                                   amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   spendUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                        recipient_0: { is_left: boolean,
                                       left: { bytes: Uint8Array },
@@ -74,6 +102,14 @@ export type Circuits<PS> = {
                                  color: Uint8Array,
                                  value: bigint
                                }): __compactRuntime.CircuitResults<PS, []>;
+  receiveShieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                 issuerAddress_0: Uint8Array,
+                                 mintEntryPoint_0: Uint8Array,
+                                 issuerCallCommitment_0: bigint,
+                                 coin_0: { nonce: Uint8Array,
+                                           color: Uint8Array,
+                                           value: bigint
+                                         }): __compactRuntime.CircuitResults<PS, []>;
   spendShieldedToken(context: __compactRuntime.CircuitContext<PS>,
                      recipient_0: { is_left: boolean,
                                     left: { bytes: Uint8Array },
@@ -88,6 +124,12 @@ export type Circuits<PS> = {
   receiveUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                          color_0: Uint8Array,
                          amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  receiveUnshieldedTokenFromIssuer(context: __compactRuntime.CircuitContext<PS>,
+                                   issuerAddress_0: Uint8Array,
+                                   mintEntryPoint_0: Uint8Array,
+                                   issuerCallCommitment_0: bigint,
+                                   color_0: Uint8Array,
+                                   amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   spendUnshieldedToken(context: __compactRuntime.CircuitContext<PS>,
                        recipient_0: { is_left: boolean,
                                       left: { bytes: Uint8Array },
