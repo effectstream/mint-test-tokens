@@ -239,6 +239,15 @@ test("recovers deleted or partial journals from a valid same-stack ready registr
     });
     const recovered = readyDeploymentsForNetwork(canonical, network);
     assert.equal(recovered.size, 6);
+    const reorderedNetwork: NetworkIdentity = {
+      stackIdentity: network.stackIdentity,
+      chainId: network.chainId,
+      networkId: network.networkId,
+      protocolFamily: network.protocolFamily,
+      displayName: network.displayName,
+      key: network.key
+    };
+    assert.equal(readyDeploymentsForNetwork(canonical, reorderedNetwork).size, 6);
     assert.deepEqual(mergeResumeDeployments([], recovered), recovered);
     const partial = [records("journal-old").get("twBTC")!];
     const repaired = mergeResumeDeployments(partial, recovered);
@@ -331,6 +340,10 @@ test("requires source revision to resolve and match tracked source/artifact byte
     assert.throws(() => resolveReproducibleSourceRevision(directory, "0".repeat(40), ["issuer.compact", "managed"]), /does not resolve/);
     await writeFile(join(directory, "issuer.compact"), "changed\n");
     assert.throws(() => resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), /do not match/);
+    await writeFile(join(directory, "issuer.compact"), "export circuit mint(): [] {}\n");
+    await writeFile(join(directory, ".gitignore"), "managed/*.log\n");
+    await writeFile(join(directory, "managed", "build.log"), "ignored but hashed\n");
+    assert.throws(() => resolveReproducibleSourceRevision(directory, revision, ["issuer.compact", "managed"]), /build\.log/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

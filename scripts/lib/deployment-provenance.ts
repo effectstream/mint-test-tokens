@@ -85,7 +85,11 @@ export function resolveReproducibleSourceRevision(
     "git", ["ls-files", "--others", "--exclude-standard", "--", ...relevantPaths],
     { cwd: repositoryRoot, encoding: "utf8" }
   ).trim();
-  const mismatches = [changed, untracked].filter(Boolean).join("\n");
+  const ignored = execFileSync(
+    "git", ["ls-files", "--others", "--ignored", "--exclude-standard", "--", ...relevantPaths],
+    { cwd: repositoryRoot, encoding: "utf8" }
+  ).trim();
+  const mismatches = [changed, untracked, ignored].filter(Boolean).join("\n");
   if (mismatches) throw new Error(`Source/artifact bytes do not match SOURCE_REVISION ${revision}:\n${mismatches}`);
   return revision;
 }
