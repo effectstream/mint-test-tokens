@@ -5,6 +5,16 @@ export type TokenSymbol = "twBTC" | "twETH" | "twUSDC" | "twUSDM" | "utwUSDC" | 
 export type Privacy = "shielded" | "unshielded";
 export type RegistryStatus = "unavailable" | "deploying" | "ready" | "stale";
 export type DeploymentStatus = "active" | "superseded";
+export type MaintenanceAuthorityStatus = "retained" | "renounced" | "unknown";
+
+export interface CompatibilitySnapshot {
+  profile: "v1" | "v2";
+  compiler: string;
+  compactRuntime: string;
+  ledger: string;
+  midnightJs: string;
+  walletSdk: string;
+}
 
 export interface ArtifactProvenance {
   sourceRevision: string;
@@ -20,6 +30,13 @@ export interface DeploymentRecord {
   deploymentTransaction: string;
   deployedAt: string;
   verifiedAt: string;
+  network: NetworkIdentity;
+  compatibility: CompatibilitySnapshot;
+  confirmation: { blockHeight: string; blockHash: string };
+  maintenanceAuthority: {
+    status: MaintenanceAuthorityStatus;
+    address: string | null;
+  };
   artifact: ArtifactProvenance;
 }
 export interface TokenRecord {
@@ -46,13 +63,6 @@ export interface TokenRegistry {
   status: RegistryStatus;
   generatedAt: string;
   network: NetworkIdentity;
-  compatibility: {
-    profile: "v1" | "v2";
-    compiler: string;
-    compactRuntime: string;
-    ledger: string;
-    midnightJs: string;
-    walletSdk: string;
-  };
+  compatibility: CompatibilitySnapshot;
   tokens: TokenRecord[];
 }

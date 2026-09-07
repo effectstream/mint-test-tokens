@@ -21,3 +21,10 @@ Both protocol packages expose immutable constructor metadata and `name()`,
 unique `Bytes<32>` nonce, and returns coin information for private delivery.
 Unshielded `mint` accepts `Either<ContractAddress, UserAddress>` and a positive
 `Uint<64>` amount. The different union ordering is intentional.
+
+DApp Connector API v4.0.1 exposes `getShieldedBalances` and
+`getUnshieldedBalances` for both protocol profiles. Its shielded address result
+contains the full address plus coin and encryption public keys. The standard
+API does not currently expose a method to import contract-minted coin info into
+a third-party wallet; callers must not label a shielded mint received until a
+wallet-supported delivery path has confirmed it.

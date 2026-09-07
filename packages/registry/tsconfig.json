@@ -8,6 +8,8 @@
     "composite": true,
     "outDir": "dist",
     "rootDir": "src",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"]

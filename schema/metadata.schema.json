@@ -70,7 +70,7 @@
     "deployment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deploymentId", "status", "contractAddress", "tokenId", "deploymentTransaction", "deployedAt", "verifiedAt", "artifact"],
+      "required": ["deploymentId", "status", "contractAddress", "tokenId", "deploymentTransaction", "deployedAt", "verifiedAt", "network", "compatibility", "confirmation", "maintenanceAuthority", "artifact"],
       "properties": {
         "deploymentId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["active", "superseded"] },
@@ -79,6 +79,26 @@
         "deploymentTransaction": { "type": "string", "minLength": 1 },
         "deployedAt": { "type": "string", "format": "date-time" },
         "verifiedAt": { "type": "string", "format": "date-time" },
+        "network": { "$ref": "#/properties/network" },
+        "compatibility": { "$ref": "#/properties/compatibility" },
+        "confirmation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["blockHeight", "blockHash"],
+          "properties": {
+            "blockHeight": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+            "blockHash": { "type": "string", "minLength": 1 }
+          }
+        },
+        "maintenanceAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "address"],
+          "properties": {
+            "status": { "enum": ["retained", "renounced", "unknown"] },
+            "address": { "type": ["string", "null"] }
+          }
+        },
         "artifact": {
           "type": "object",
           "additionalProperties": false,
