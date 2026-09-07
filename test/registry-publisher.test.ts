@@ -64,16 +64,22 @@ test("waits for full synchronization and then requires positive DUST", async () 
   });
   const states = new Subject<DeploymentWalletState>();
   let resolved = false;
-  const pending = waitForFundedDeploymentWallet({ state: () => states }, 1_000).then((state) => {
+  let timeRead = false;
+  const pending = waitForFundedDeploymentWallet({ state: () => states }, 1_000, () => {
+    timeRead = true;
+    return new Date();
+  }).then((state) => {
     resolved = true;
     return state;
   });
   states.next(positive(false, 1n));
   await Promise.resolve();
   assert.equal(resolved, false);
+  assert.equal(timeRead, false);
   const funded = positive(true, 1n);
   states.next(funded);
   assert.equal(await pending, funded);
+  assert.equal(timeRead, true);
 
   await assert.rejects(
     waitForFundedDeploymentWallet({ state: () => new Subject<DeploymentWalletState>() }, 10),
