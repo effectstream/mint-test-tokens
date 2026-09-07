@@ -39,4 +39,3 @@ describe('v1 connector shielded identity', () => {
     }, 'preview')).toThrow('do not match');
   });
 });
-
