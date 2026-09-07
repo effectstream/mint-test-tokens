@@ -1,0 +1,39 @@
+{
+  "name": "@effectstream/mint-test-tokens-v2-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "node --import tsx deploy.ts deploy",
+    "verify": "node --import tsx deploy.ts verify",
+    "test:wallet": "node --import tsx mint-wallet-test.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck deploy.ts mint-wallet-test.ts ../../scripts/lib/*.ts",
+    "test:receiver": "RECEIVER_PROFILE=v2 node ../../test/receiver-runtime.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-js": "2.5.5-rc.7",
+    "@midnight-ntwrk/compact-runtime": "0.18.0-rc.1",
+    "@midnight-ntwrk/midnight-js-contracts": "5.0.0-beta.6",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.0-beta.6",
+    "@midnight-ntwrk/midnight-js-network-id": "5.0.0-beta.6",
+    "@midnight-ntwrk/midnight-js-types": "5.0.0-beta.6",
+    "@midnight-ntwrk/testkit-js": "5.0.0-beta.6",
+    "@midnightntwrk/ledger-v9": "1.0.0-rc.3",
+    "@midnightntwrk/wallet-sdk": "2.0.0-beta.2",
+    "pino": "10.3.1",
+    "rxjs": "7.8.2",
+    "tsx": "4.20.6"
+  },
+  "overrides": {
+    "@midnight-ntwrk/compact-js": "2.5.5-rc.7",
+    "@midnight-ntwrk/compact-runtime": "0.18.0-rc.1",
+    "@midnightntwrk/ledger-v9": "1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@effectstream/mint-test-tokens-v1-sdk12-wallet-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck *.ts test/*.test.ts"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/ledger-v8": "8.1.0",
+    "@midnightntwrk/wallet-sdk-abstractions": "2.1.0",
+    "@midnightntwrk/wallet-sdk-address-format": "3.1.2",
+    "@midnightntwrk/wallet-sdk-dust-wallet": "4.2.0",
+    "@midnightntwrk/wallet-sdk-facade": "4.1.0",
+    "@midnightntwrk/wallet-sdk-hd": "3.0.3",
+    "@midnightntwrk/wallet-sdk-shielded": "3.0.2",
+    "@midnightntwrk/wallet-sdk-unshielded-wallet": "3.1.0",
+    "fs-native-extensions": "1.5.0",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "manifest-version": "1",
+  "compiler-version": "0.33.0",
+  "language-version": "0.25.0",
+  "runtime-version": "0.18.0-rc.1",
+  "compiler": {
+    "type": "directory",
+    "contract-info.json": {
+      "type": "file",
+      "size": 4010,
+      "hash": "ebf2d03ce3132dfaae4e450053dd92c7685106fb631949f1a8b66afda73a45ca"
+    }
+  },
+  "contract": {
+    "type": "directory",
+    "index.d.ts": {
+      "type": "file",
+      "size": 4362,
+      "hash": "2b910634a2e98f15e168be6006f33d32c3e9694dd2c1dea0b3b2d1d97b2b781f"
+    },
+    "index.js": {
+      "type": "file",
+      "size": 50698,
+      "hash": "fed033d8ca85fb69c01953aafa73286c5ea7cf3973b91fc3e256bb3175b7bba2"
+    },
+    "index.js.map": {
+      "type": "file",
+      "size": 2114,
+      "hash": "85ac4e41ca9e8a3dbf78afcc9a92800ad24e2683eae9b3c7f6dcdaca13f87a67"
+    }
+  },
+  "zkir": {
+    "type": "directory",
+    "decimals.bzkir": {
+      "type": "file",
+      "size": 71,
+      "hash": "d7e38f6a5bc25a9a7eabd66c38a7148405538f7039f63c6574a007044a356323"
+    },
+    "decimals.zkir": {
+      "type": "file",
+      "size": 953,
+      "hash": "1e2141639872add16ee071454495a6a761f62ddfcdce302303d108e40d7b9893"
+    },
+    "mint.bzkir": {
+      "type": "file",
+      "size": 731,
+      "hash": "d8480ab7251569266e92fba091968d17ee1c0a23da1c6de247b5d279a3d40790"
+    },
+    "mint.zkir": {
+      "type": "file",
+      "size": 10530,
+      "hash": "6e932953f1b4903c26201fa8f26100ffd22f8288c7235d2957666ea278bab48f"
+    },
+    "name.bzkir": {
+      "type": "file",
+      "size": 105,
+      "hash": "a63f2cff4beed76c3e03e58bdd4ae110a814ddd46f90187a333d024eb2ff9478"
+    },
+    "name.zkir": {
+      "type": "file",
+      "size": 993,
+      "hash": "abf56fec69d63ce7d7911ec2faff19d84d1712559c2065ddad36e3e254bee4dd"
+    },
+    "symbol.bzkir": {
+      "type": "file",
+      "size": 103,
+      "hash": "7663272ca075a1e6d0d0502251cc8224e92a4576eb40ebbebeb14ce5206ffb56"
+    },
+    "symbol.zkir": {
+      "type": "file",
+      "size": 954,
+      "hash": "8e8597767f0199f401448d572f251356cfb9ae15ecf364430e7c949650c55893"
+    },
+    "tokenColor.bzkir": {
+      "type": "file",
+      "size": 162,
+      "hash": "cc5b2577eadb1867076b076f31ab9df933f4cb575d6ad6e968de83ccc5684b8c"
+    },
+    "tokenColor.zkir": {
+      "type": "file",
+      "size": 2312,
+      "hash": "0e5ab4886ef41272c6ceb5b7b061fd1670778539896280f6e434c8ea381bdb46"
+    }
+  },
+  "keys": {
+    "type": "directory",
+    "decimals.prover": {
+      "type": "file",
+      "size": 22398,
+      "hash": "7d0a4a6a02919185a983cfe3775b0829765a04f59655d94de5cf27d05149c68f"
+    },
+    "decimals.verifier": {
+      "type": "file",
+      "size": 1351,
+      "hash": "244f09da9dddb38058c5fcb70394b3722de68535738a66480e31f2c912bb949f"
+    },
+    "mint.prover": {
+      "type": "file",
+      "size": 5205749,
+      "hash": "9d4042071d2f1743aad6cc7fa130a64d8aeb8ffc6f1c426fa5400254fa86202b"
+    },
+    "mint.verifier": {
+      "type": "file",
+      "size": 2119,
+      "hash": "4bbbb047b2f10bc57e4fafd9537b2dcac9290d9a2f7560a9e670f96a8452794a"
+    },
+    "name.prover": {
+      "type": "file",
+      "size": 22437,
+      "hash": "31bac5af4a40c45b6189b9a7891d3c3ca7407a9360f14343859fcd1724d5a5ee"
+    },
+    "name.verifier": {
+      "type": "file",
+      "size": 1351,
+      "hash": "2e3b5ac008f4fc5349ed8105579009f2a6f44c06963d884ff39afe41ffe6c696"
+    },
+    "symbol.prover": {
+      "type": "file",
+      "size": 22436,
+      "hash": "b05b5111aea5700ed9f8074772535b073481137e0206581ad7ba21c2f08b14f0"
+    },
+    "symbol.verifier": {
+      "type": "file",
+      "size": 1351,
+      "hash": "b36a8137f9cb7bce5546e12d5194c5e72a8caa1b11441c35a0f2379246e04387"
+    },
+    "tokenColor.prover": {
+      "type": "file",
+      "size": 2814732,
+      "hash": "c905f749b80f2c7f2c64eb1369f885f82a9d03b79b92dbef18cc41206b5de269"
+    },
+    "tokenColor.verifier": {
+      "type": "file",
+      "size": 2119,
+      "hash": "0f054922d52a3d708f7ee4da0e370b4b39171f57f276883ac64745a4882c66ab"
+    }
+  }
+}
