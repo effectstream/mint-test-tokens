@@ -48,6 +48,7 @@ export function App() {
     registry.network,
     registry.networkId,
     registry.protocolFamily,
+    ...Object.values(registry.compatibility),
     registry.revision,
     String(registryReady),
     ...registry.tokens.map((token) => `${token.symbol}:${token.issuerAddress ?? '-'}:${token.tokenId ?? '-'}`),

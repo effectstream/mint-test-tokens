@@ -1,3 +1,5 @@
+import type { CompatibilitySnapshot } from '@effectstream/mint-test-token-registry';
+
 export type NetworkKey = 'preview' | 'preprod' | 'stagenet' | 'undeployed';
 export type PrivacyKind = 'shielded' | 'unshielded';
 export type DeploymentState = 'active' | 'superseded' | 'unavailable';
@@ -48,6 +50,7 @@ export interface RegistryView {
   network: NetworkKey;
   networkId: string;
   protocolFamily: 'midnight-1.x' | 'midnight-2.x';
+  compatibility: CompatibilitySnapshot;
   chainIdentity: string;
   revision: string;
   verifiedAt: string | null;

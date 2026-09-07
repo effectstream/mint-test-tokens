@@ -51,6 +51,7 @@ export function registryView(registry: TokenRegistry): RegistryView {
     network: registry.network.key,
     networkId: registry.network.networkId,
     protocolFamily: registry.network.protocolFamily,
+    compatibility: { ...registry.compatibility },
     chainIdentity: registry.network.chainId ?? registry.network.stackIdentity ?? registry.network.networkId,
     revision: registry.registryRevision,
     verifiedAt: activeVerifiedDates.sort().at(-1) ?? null,

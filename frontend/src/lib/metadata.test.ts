@@ -67,8 +67,9 @@ describe('runtime token registry', () => {
       cache: 'no-cache',
     }));
     expect(view.ready).toBe(true);
-    expect(view.revision).toBe('7af8d3889254783bf8383beb141e4d6a5b8a43ee6c600ad5989cb6d448c071a0');
+    expect(view.revision).toBe(registry.registryRevision);
     expect(view.protocolFamily).toBe('midnight-2.x');
+    expect(view.compatibility).toEqual(registry.compatibility);
     expect(view.tokens).toHaveLength(6);
 
     for (const token of registry.tokens) {
