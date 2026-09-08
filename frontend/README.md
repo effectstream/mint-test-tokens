@@ -33,6 +33,16 @@ tool's output directory without changing or rebuilding the application:
 MINT_METADATA_DIR=/absolute/path/to/deployment/output npm --prefix frontend run dev
 ```
 
+Before Vite starts, the artifact verifier reconstructs the stable public client
+pins and the exact current Git `HEAD`, hashes those tracked issuer artifacts,
+and emits the client identities bundled by the application. A local deployment
+from that same checkout can atomically replace `metadata.undeployed.json`
+without rebuilding; address, token ID and registry revision changes do not
+change the client artifacts. After switching to a newer code checkout, rebuild
+or restart Vite so its exact build-revision identity follows that checkout.
+Registry-provided source revisions never become trusted client identities by
+themselves.
+
 After a production build, use the included static server to test the same
 runtime metadata behavior. The directory may gain or atomically replace
 `metadata.undeployed.json` while the server remains running.
@@ -66,6 +76,9 @@ manifest and provenance beside the publishable directory.
 
 From the repository root, this reproduces the verified export procedure. It
 uses `git archive`, so ignored host build output cannot enter the container.
+The repository's Git object database is mounted read-only so the build can
+reconstruct both historical compatibility pins and the explicit release commit;
+Git data is never copied into `frontend/dist`.
 
 ```sh
 release_sha="$(git rev-parse HEAD)"
@@ -73,6 +86,7 @@ release_tag="$(git rev-parse --short=7 "$release_sha")"
 release_dir="/private/tmp/mint-test-tokens-release-$release_tag"
 evidence_dir="$release_dir-evidence"
 source_archive="/private/tmp/mint-test-tokens-source-$release_tag.tar"
+git_dir="$(git rev-parse --absolute-git-dir)"
 
 test -z "$(git status --porcelain)"
 mkdir "$release_dir" "$evidence_dir"
@@ -80,7 +94,10 @@ git archive --format=tar --output="$source_archive" "$release_sha"
 
 docker run --rm -i \
   -e RELEASE_SHA="$release_sha" \
+  -e MINT_EXPECTED_RELEASE_SHA="$release_sha" \
+  -e MINT_SOURCE_GIT_DIR=/input/repository.git \
   -v "$source_archive:/input/source.tar:ro" \
+  -v "$git_dir:/input/repository.git:ro" \
   -v "$release_dir:/release" \
   -v "$evidence_dir:/evidence" \
   node:24.15.0-bookworm sh -eu <<'DOCKER'

@@ -1,4 +1,5 @@
 import {
+  deploymentSupportsCompatibility,
   validateRegistry,
   type NetworkKey as RegistryNetworkKey,
   type TokenRecord,
@@ -6,6 +7,8 @@ import {
 } from '@effectstream/mint-test-token-registry';
 import type { BalanceState, NetworkKey, RegistryView, TokenView } from '../domain/model';
 import { formatHumanAmount } from './format';
+import { bundledClientArtifacts } from './clientArtifacts';
+import { supportsRegistryCompatibility } from './compatibility';
 
 export class MetadataUnavailableError extends Error {
   constructor(readonly network: NetworkKey) {
@@ -47,14 +50,24 @@ export function registryView(registry: TokenRegistry): RegistryView {
     const deployment = activeDeployment(token);
     return deployment ? [deployment.verifiedAt] : [];
   });
+  const clientCompatible = supportsRegistryCompatibility(registry.compatibility) && registry.tokens.every((token) => {
+    const deployment = activeDeployment(token);
+    const bundledArtifacts = bundledClientArtifacts(registry.compatibility.profile, token.privacy);
+    const eligibleArtifacts = registry.network.key === 'undeployed' ? bundledArtifacts : bundledArtifacts.slice(0, 1);
+    return deployment !== null && eligibleArtifacts.some(
+      (clientArtifact) => deploymentSupportsCompatibility(deployment, registry.compatibility, clientArtifact),
+    );
+  });
   return {
     network: registry.network.key,
     networkId: registry.network.networkId,
     protocolFamily: registry.network.protocolFamily,
+    compatibility: { ...registry.compatibility },
     chainIdentity: registry.network.chainId ?? registry.network.stackIdentity ?? registry.network.networkId,
     revision: registry.registryRevision,
     verifiedAt: activeVerifiedDates.sort().at(-1) ?? null,
     ready: registry.status === 'ready' && registry.tokens.every((token) => activeDeployment(token)),
+    clientCompatible,
     tokens: registry.tokens.map((token) => tokenView(registry.network.key, token)),
   };
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { RegistryView } from '../domain/model';
 import type { DisposableProtocolAdapter } from '../../protocols/shared/adapter-core';
 import type { ConnectedWalletSession } from './useWallet';
+import { compatibilityMismatchMessage } from '../lib/compatibility';
 
 export type ProtocolAdapterState =
   | { kind: 'idle'; adapter: null }
@@ -20,6 +21,12 @@ export function useProtocolAdapter(
     let adapter: DisposableProtocolAdapter | undefined;
     if (!registry || !session) {
       setState({ kind: 'idle', adapter: null });
+      return;
+    }
+
+    const mismatch = compatibilityMismatchMessage(registry.compatibility, registry.clientCompatible);
+    if (mismatch) {
+      setState({ kind: 'error', adapter: null, message: mismatch });
       return;
     }
 

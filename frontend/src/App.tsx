@@ -43,11 +43,14 @@ export function App() {
   const [localEnabled, setLocalEnabled] = useState(network === 'undeployed');
   const directory = useDirectory(network);
   const registry = directory.state.kind === 'ready' ? directory.state.registry : null;
-  const registryReady = registry?.ready === true && directory.state.kind === 'ready' && !directory.state.revalidating;
+  const registryStable = registry?.ready === true && directory.state.kind === 'ready' && !directory.state.revalidating;
+  const registryReady = registryStable && registry?.clientCompatible === true;
   const registryKey = useMemo(() => registry ? [
     registry.network,
     registry.networkId,
     registry.protocolFamily,
+    ...Object.values(registry.compatibility),
+    String(registry.clientCompatible),
     registry.revision,
     String(registryReady),
     ...registry.tokens.map((token) => `${token.symbol}:${token.issuerAddress ?? '-'}:${token.tokenId ?? '-'}`),
@@ -55,7 +58,7 @@ export function App() {
   const wallet = useWallet(network, registry?.networkId ?? null);
   const tokens = useMemo(() => registry?.tokens ?? [], [registry]);
   const balanceController = useBalances(tokens, wallet.session);
-  const adapterState = useProtocolAdapter(registryReady ? registry : null, wallet.session);
+  const adapterState = useProtocolAdapter(registryStable ? registry : null, wallet.session);
   const adapter = adapterState.adapter;
   const mint = useMintFlow({
     network,
