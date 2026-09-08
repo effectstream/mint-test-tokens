@@ -24,6 +24,34 @@ The output is `frontend/dist`. A public build contains
 `metadata.stagenet.json`, plus the exact v1/v2 issuer proving artifacts. It
 never copies `metadata.undeployed.json`.
 
+## Browser runtime shim
+
+The pinned Midnight packages read the bare Node global `Buffer`:
+`@midnight-ntwrk/compact-runtime` (`toHex`/`fromHex`, and the shielded-coin
+commitment path `mint` uses), `wallet-sdk-address-format`, `platform-js`, and
+for Midnight 2.x also `midnight-js-utils` and the indexer provider. Browsers do
+not define it, so circuit execution in the browser failed with
+`Error executing circuit 'mint' · Buffer is not defined`.
+
+`src/polyfills.ts` installs the `buffer` package on `globalThis` when no
+`Buffer` global exists, and never replaces one another script — a wallet
+extension, for example — already installed. It is the first import of
+`src/main.tsx`, so it evaluates before the lazily imported `protocols/v1|v2`
+adapter chunks and before any pinned Midnight module. Both configurations alias
+`buffer` to `node_modules/buffer`, so the shim binds the browser implementation
+rather than Node's builtin module of the same name.
+
+Vitest runs under Node, where `Buffer` is always a global, so the suite could
+not observe its absence. `protocols/v1/src/mint-circuit-buffer.test.ts` and
+`protocols/v2/src/mint-circuit-buffer.test.ts` therefore delete
+`globalThis.Buffer` first, execute the real generated issuer `mint` circuits
+against each profile's own pinned Compact runtime, and assert both the failure
+without the shim and the success with it. `vitest.config.ts` reuses the build's
+`profileRuntimeResolution` plugin so each generated contract binds to its
+profile's runtime. Both files declare `// @vitest-environment node`: under the
+suite's jsdom environment the runtime's WASM bindings reject a `Uint8Array`
+created in the jsdom realm.
+
 ## Local development and deployment metadata
 
 Vite reads metadata from `../metadata` by default. Point it at a deployment
@@ -56,6 +84,18 @@ npm --prefix frontend run serve:local
 
 Open `http://127.0.0.1:14119/?network=undeployed`. A missing local registry is
 a real HTTP 404 and appears as unavailable in the interface.
+
+The application only probes for `metadata.undeployed.json` where a local
+registry can plausibly exist. `isLocalRegistryHost` in `src/lib/metadata.ts`
+classifies loopback, `0.0.0.0`, RFC 1918 and link-local addresses, IPv6
+unique-local and link-local addresses, and `.localhost`, `.local`, `.internal`,
+`.lan` and `.home.arpa` names as local; everything else is public, including
+`*.pages.dev` and any public name that merely resolves to a loopback address.
+Public hosts skip the probe entirely, which keeps the expected 404 for a file
+the release never contains out of the browser console.
+Loopback, private and local-suffix hosts probe automatically, Vite dev mode
+always probes, `?local=1` enables the Local option on any host without probing,
+and `?network=undeployed` forces the probe so an explicit request is honoured.
 
 ## Cloudflare Pages
 
