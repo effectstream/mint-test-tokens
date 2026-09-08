@@ -1,5 +1,5 @@
 import * as __compactRuntime from '@midnight-ntwrk/compact-runtime';
-__compactRuntime.checkRuntimeVersion('0.18.0-rc.1');
+__compactRuntime.checkRuntimeVersion('0.19.0');
 
 const _descriptor_0 = __compactRuntime.CompactTypeBoolean;
 
@@ -272,6 +272,20 @@ export class Contract {
     }
     if (typeof(constructorContext_0.initialZswapLocalState) !== 'object') {
       throw new __compactRuntime.CompactError(`Contract state constructor: expected 'initialZswapLocalState' in argument 1 (as invoked from Typescript) to be an object`);
+    }
+    if (!(typeof (name__0) === 'string')) {
+      __compactRuntime.typeError('Contract state constructor',
+                                 'argument 1 (argument 2 as invoked from Typescript)',
+                                 'unshielded-token.compact line 11 char 1',
+                                 'Opaque<"string">',
+                                 name__0)
+    }
+    if (!(typeof (symbol__0) === 'string')) {
+      __compactRuntime.typeError('Contract state constructor',
+                                 'argument 2 (argument 3 as invoked from Typescript)',
+                                 'unshielded-token.compact line 11 char 1',
+                                 'Opaque<"string">',
+                                 symbol__0)
     }
     if (!(typeof(decimals__0) === 'bigint' && decimals__0 >= 0n && decimals__0 <= 255n)) {
       __compactRuntime.typeError('Contract state constructor',

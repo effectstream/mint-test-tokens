@@ -1,0 +1,26 @@
+{
+  "v1": {
+    "shielded": {
+      "sourceRevision": "418cce599bc1f712ba1a0d277765f96e2f693e27",
+      "compilerVersion": "0.31.1",
+      "artifactSha256": "bff08ae9d229d61cde3ea6b19244a357b157a00694890e8173d8760642284de1"
+    },
+    "unshielded": {
+      "sourceRevision": "418cce599bc1f712ba1a0d277765f96e2f693e27",
+      "compilerVersion": "0.31.1",
+      "artifactSha256": "bd8bc8c22b9ee8a8a329d1a54270b864f8a84918344d0337605913ff4e00d5d4"
+    }
+  },
+  "v2": {
+    "shielded": {
+      "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+      "compilerVersion": "0.34.0",
+      "artifactSha256": "82e88346ea942b7d7b83ad1f1336368009866c207b352b7ed15488a6d925dd5e"
+    },
+    "unshielded": {
+      "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+      "compilerVersion": "0.34.0",
+      "artifactSha256": "0c72275d3fa20454f6bef43a6a5fd711d3e4b608773b5f16083456454b9740a4"
+    }
+  }
+}

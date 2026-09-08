@@ -2,13 +2,17 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { compatibilitySnapshotsEqual } from "../../packages/registry/src/semantic.js";
 import type {
   CompatibilitySnapshot,
+  ClientCompatibilityVerification,
   DeploymentRecord,
   DeploymentToolchain,
   MaintenanceAuthorityStatus,
   NetworkIdentity
 } from "../../packages/registry/src/types.js";
+
+const GIT_OBJECT_MAX_BUFFER = 64 * 1024 * 1024;
 
 export interface ChainDeploymentEvidence {
   transactionHash: string;
@@ -46,6 +50,78 @@ export async function hashDirectory(directory: string): Promise<string> {
   return hash.digest("hex");
 }
 
+function resolveExactCommit(repositoryRoot: string, requestedRevision: string): string {
+  if (!/^[0-9a-f]{40}$/i.test(requestedRevision)) throw new Error("SOURCE_REVISION must be a full git SHA");
+  let revision: string;
+  try {
+    revision = execFileSync(
+      "git", ["rev-parse", "--verify", `${requestedRevision}^{commit}`],
+      { cwd: repositoryRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    ).trim().toLowerCase();
+  } catch {
+    throw new Error(`SOURCE_REVISION does not resolve to a commit: ${requestedRevision}`);
+  }
+  if (revision !== requestedRevision.toLowerCase()) throw new Error("SOURCE_REVISION must identify the resolved commit exactly");
+  return revision;
+}
+
+/** Hash a directory exactly as hashDirectory does, but from immutable bytes in a pinned Git commit. */
+export function hashGitDirectory(repositoryRoot: string, requestedRevision: string, directory: string): string {
+  const revision = resolveExactCommit(repositoryRoot, requestedRevision);
+  const prefix = directory.replace(/\/+$/, "");
+  const listed = execFileSync(
+    "git", ["ls-tree", "-r", "--name-only", revision, "--", prefix],
+    { cwd: repositoryRoot, encoding: "utf8" }
+  ).trim();
+  const files = listed ? listed.split("\n").sort() : [];
+  if (!files.length) throw new Error(`SOURCE_REVISION does not contain artifact directory: ${prefix}`);
+  const hash = createHash("sha256");
+  for (const path of files) {
+    const contents = execFileSync("git", ["show", `${revision}:${path}`], {
+      cwd: repositoryRoot,
+      maxBuffer: GIT_OBJECT_MAX_BUFFER
+    });
+    hash.update(relative(prefix, path));
+    hash.update("\0");
+    hash.update(contents);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+/** Re-establish the original deployment artifact declaration from its pinned Git bytes. */
+export function assertPinnedDeploymentArtifact(
+  repositoryRoot: string,
+  record: DeploymentRecord,
+  managedArtifactPath: string,
+  sourcePath: string
+): void {
+  const revision = resolveExactCommit(repositoryRoot, record.artifact.sourceRevision);
+  try {
+    execFileSync("git", ["cat-file", "-e", `${revision}:${sourcePath}`], {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "ignore", "pipe"]
+    });
+  } catch {
+    throw new Error(`Deployment provenance source is absent from ${revision}: ${sourcePath}`);
+  }
+  const artifactSha256 = hashGitDirectory(repositoryRoot, revision, managedArtifactPath);
+  if (artifactSha256 !== record.artifact.artifactSha256) {
+    throw new Error("Deployment provenance mismatch: pinned artifact digest");
+  }
+  const info = JSON.parse(execFileSync(
+    "git", ["show", `${revision}:${managedArtifactPath}/compiler/contract-info.json`],
+    { cwd: repositoryRoot, encoding: "utf8" }
+  )) as { "compiler-version"?: unknown; "runtime-version"?: unknown };
+  const embeddedCompiler = record.artifact.compilerVersion.replace(/-rc\.\d+$/, "");
+  if (info["compiler-version"] !== embeddedCompiler) {
+    throw new Error("Deployment provenance mismatch: pinned embedded compiler version");
+  }
+  if (info["runtime-version"] !== record.compatibility.compactRuntime) {
+    throw new Error("Deployment provenance mismatch: pinned embedded runtime version");
+  }
+}
+
 /** Resolve a full commit and prove that every declared source/artifact path matches it byte-for-byte. */
 export function resolveReproducibleSourceRevision(
   repositoryRoot: string,
@@ -55,17 +131,7 @@ export function resolveReproducibleSourceRevision(
   const candidate = requestedRevision?.trim() || execFileSync(
     "git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }
   ).trim();
-  if (!/^[0-9a-f]{40}$/i.test(candidate)) throw new Error("SOURCE_REVISION must be a full git SHA");
-  let revision: string;
-  try {
-    revision = execFileSync(
-      "git", ["rev-parse", "--verify", `${candidate}^{commit}`],
-      { cwd: repositoryRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
-    ).trim().toLowerCase();
-  } catch {
-    throw new Error(`SOURCE_REVISION does not resolve to a commit: ${candidate}`);
-  }
-  if (revision !== candidate.toLowerCase()) throw new Error("SOURCE_REVISION must identify the resolved commit exactly");
+  const revision = resolveExactCommit(repositoryRoot, candidate);
 
   for (const path of relevantPaths) {
     try {
@@ -92,6 +158,48 @@ export function resolveReproducibleSourceRevision(
   const mismatches = [changed, untracked, ignored].filter(Boolean).join("\n");
   if (mismatches) throw new Error(`Source/artifact bytes do not match SOURCE_REVISION ${revision}:\n${mismatches}`);
   return revision;
+}
+
+export function assertClientCompatibilityVerification(
+  record: DeploymentRecord,
+  evidence: ClientCompatibilityVerification | undefined,
+  expected: {
+    compatibility: CompatibilitySnapshot;
+    sourceRevision: string;
+    compilerVersion: string;
+    artifactSha256: string;
+  }
+): asserts evidence is ClientCompatibilityVerification {
+  const mismatches: string[] = [];
+  if (!evidence) throw new Error("Client compatibility verification is missing");
+  if (evidence.deploymentId !== record.deploymentId) mismatches.push("deployment id");
+  if (evidence.deploymentArtifactSha256 !== record.artifact.artifactSha256) mismatches.push("deployment artifact digest");
+  const compatibilityFields = [
+    "profile", "compiler", "language", "compactJs", "compactRuntime",
+    "ledger", "onchainRuntime", "midnightJs", "walletSdk"
+  ] as const;
+  if (!compatibilityFields.every((field) => evidence.compatibility[field] === expected.compatibility[field])) {
+    mismatches.push("compatibility declaration");
+  }
+  if (evidence.artifact.sourceRevision !== expected.sourceRevision) mismatches.push("source revision");
+  if (evidence.artifact.compilerVersion !== expected.compilerVersion) mismatches.push("compiler declaration");
+  if (evidence.artifact.artifactSha256 !== expected.artifactSha256) mismatches.push("client artifact digest");
+  if (mismatches.length) throw new Error(`Client compatibility verification mismatch: ${mismatches.join(", ")}`);
+}
+
+/** Select the immutable source revision already published for the active client tuple. */
+export function publishedClientSourceRevision(
+  record: DeploymentRecord,
+  compatibility: CompatibilitySnapshot
+): string {
+  const evidence = record.compatibilityVerifications?.find((candidate) =>
+    compatibilitySnapshotsEqual(candidate.compatibility, compatibility)
+  );
+  if (evidence) return evidence.artifact.sourceRevision;
+  if (compatibilitySnapshotsEqual(record.compatibility, compatibility)) {
+    return record.artifact.sourceRevision;
+  }
+  throw new Error("Deployment has no published source revision for the current client compatibility");
 }
 
 export async function verifyEmbeddedCompilerMetadata(

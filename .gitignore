@@ -2,6 +2,7 @@ node_modules/
 contracts/*/node_modules/
 dist/
 coverage/
+frontend/.generated/
 *.log
 *.tsbuildinfo
 metadata.undeployed.json
