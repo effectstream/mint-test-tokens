@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0.0",
-  "registryRevision": "7af8d3889254783bf8383beb141e4d6a5b8a43ee6c600ad5989cb6d448c071a0",
+  "registryRevision": "59041d2fd2acfdad53e437e5a4d2ba88a6f24e4f9e55869b66f465f3da11a0d1",
   "status": "ready",
-  "generatedAt": "2026-09-07T18:10:50.486Z",
+  "generatedAt": "2026-09-08T00:07:01.695Z",
   "network": {
     "key": "stagenet",
     "displayName": "Stagenet",
@@ -13,10 +13,13 @@
   },
   "compatibility": {
     "profile": "v2",
-    "compiler": "0.33.0-rc.2",
-    "compactRuntime": "0.18.0-rc.1",
+    "compiler": "0.34.0",
+    "language": "0.26.0",
+    "compactJs": "2.5.5-rc.8",
+    "compactRuntime": "0.19.0",
     "ledger": "1.0.0-rc.3",
-    "midnightJs": "5.0.0-beta.6",
+    "onchainRuntime": "4.0.0-rc.3",
+    "midnightJs": "5.0.0-beta.7",
     "walletSdk": "2.0.0-beta.2"
   },
   "tokens": [
@@ -74,7 +77,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "twBTC:e7def48f80187835f24c81f35209e50bcad279d0ba3685080ab7a7988d75cb0e",
+              "deploymentArtifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "82e88346ea942b7d7b83ad1f1336368009866c207b352b7ed15488a6d925dd5e"
+              },
+              "verifiedAt": "2026-09-08T00:06:58.668Z"
+            }
+          ]
         }
       ]
     },
@@ -132,7 +158,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "twETH:9e84c9a6c97a9f3a3a895ef639d2f611251afccbaf3531445edacf8fb6019030",
+              "deploymentArtifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "82e88346ea942b7d7b83ad1f1336368009866c207b352b7ed15488a6d925dd5e"
+              },
+              "verifiedAt": "2026-09-08T00:06:59.275Z"
+            }
+          ]
         }
       ]
     },
@@ -190,7 +239,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "twUSDC:e87d8b7c83bf5d1be2887403d77128da19551fb49ee9994f05d71fbf40fac741",
+              "deploymentArtifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "82e88346ea942b7d7b83ad1f1336368009866c207b352b7ed15488a6d925dd5e"
+              },
+              "verifiedAt": "2026-09-08T00:06:59.850Z"
+            }
+          ]
         }
       ]
     },
@@ -248,7 +320,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "twUSDM:2c45d76ce24d2eb9eb37fc30a875a4e675f35f666000fea5d575e80db898e6c1",
+              "deploymentArtifactSha256": "f34d5735d367402077d16c93e4f180e5af710e6f475a1ab7cc256a78221cdbc6",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "82e88346ea942b7d7b83ad1f1336368009866c207b352b7ed15488a6d925dd5e"
+              },
+              "verifiedAt": "2026-09-08T00:07:00.532Z"
+            }
+          ]
         }
       ]
     },
@@ -306,7 +401,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "8f53ba51ce574e41d8a345cab074f8fc127714d7b7a56fd79da4553b532f7e16",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "utwUSDC:d0744ecb535a37b2a37b90515cb1c6a21cf46d65673fb6955605186b14f32f10",
+              "deploymentArtifactSha256": "8f53ba51ce574e41d8a345cab074f8fc127714d7b7a56fd79da4553b532f7e16",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "0c72275d3fa20454f6bef43a6a5fd711d3e4b608773b5f16083456454b9740a4"
+              },
+              "verifiedAt": "2026-09-08T00:07:01.093Z"
+            }
+          ]
         }
       ]
     },
@@ -364,7 +482,30 @@
             "compilerVersion": "0.33.0-rc.2",
             "artifactSha256": "8f53ba51ce574e41d8a345cab074f8fc127714d7b7a56fd79da4553b532f7e16",
             "openZeppelinRelease": null
-          }
+          },
+          "compatibilityVerifications": [
+            {
+              "deploymentId": "utwBTC:3aa27c3555ed827951d474c0f2ba7dd38dfdc9a923391a53ec195f2e91292566",
+              "deploymentArtifactSha256": "8f53ba51ce574e41d8a345cab074f8fc127714d7b7a56fd79da4553b532f7e16",
+              "compatibility": {
+                "profile": "v2",
+                "compiler": "0.34.0",
+                "language": "0.26.0",
+                "compactJs": "2.5.5-rc.8",
+                "compactRuntime": "0.19.0",
+                "ledger": "1.0.0-rc.3",
+                "onchainRuntime": "4.0.0-rc.3",
+                "midnightJs": "5.0.0-beta.7",
+                "walletSdk": "2.0.0-beta.2"
+              },
+              "artifact": {
+                "sourceRevision": "fdf0739cf2d342b283187ef8304a1784c7ec6bc2",
+                "compilerVersion": "0.34.0",
+                "artifactSha256": "0c72275d3fa20454f6bef43a6a5fd711d3e4b608773b5f16083456454b9740a4"
+              },
+              "verifiedAt": "2026-09-08T00:07:01.694Z"
+            }
+          ]
         }
       ]
     }
