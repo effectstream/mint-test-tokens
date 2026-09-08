@@ -1,5 +1,7 @@
 # Midnight test tokens
 
+**LIVE** https://mint-test-tokens.pages.dev
+
 Native test-token issuers and a canonical, static registry for Preview,
 Preprod, Stagenet, and local Midnight stacks.
 
