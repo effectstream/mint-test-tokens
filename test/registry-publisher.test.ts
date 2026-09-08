@@ -438,6 +438,7 @@ test("requires source revision to resolve and match tracked source/artifact byte
     await mkdir(join(directory, "managed", "compiler"));
     await writeFile(join(directory, "issuer.compact"), "export circuit mint(): [] {}\n");
     await writeFile(join(directory, "managed", "artifact"), "proof-bytes\n");
+    await writeFile(join(directory, "managed", "large.prover"), Buffer.alloc(2 * 1024 * 1024, 0xa5));
     await writeFile(join(directory, "managed", "compiler", "contract-info.json"), JSON.stringify({
       "compiler-version": "0.31.1",
       "runtime-version": compatibility.compactRuntime
