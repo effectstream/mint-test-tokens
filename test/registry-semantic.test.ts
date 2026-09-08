@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { deploymentSupportsCompatibility, validateRegistry } from "../packages/registry/src/semantic.js";
+import {
+  deploymentDirectlySupportsCompatibility,
+  deploymentSupportsCompatibility,
+  validateRegistry
+} from "../packages/registry/src/semantic.js";
 import { encodeDomainSeparator } from "../packages/registry/src/domain.js";
 import type {
   CompatibilitySnapshot,
@@ -152,6 +156,8 @@ test("accepts additive client compatibility evidence while preserving deployment
   assert.equal(validateRegistry(ready, "undeployed").ok, true);
   const selected = ready.tokens[0]!.deployments[0]!;
   const evidenceArtifact = selected.compatibilityVerifications![0]!.artifact;
+  assert.equal(deploymentDirectlySupportsCompatibility(selected, alignedV2Compatibility, evidenceArtifact), false);
+  assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, evidenceArtifact), true);
   assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, evidenceArtifact), true);
   assert.equal(deploymentSupportsCompatibility(selected, alignedV2Compatibility, {
     ...evidenceArtifact,
@@ -198,6 +204,7 @@ test("accepts an exact-current deployment without additive evidence and rejects 
     compilerVersion: deployment.artifact.compilerVersion,
     artifactSha256: deployment.artifact.artifactSha256
   };
+  assert.equal(deploymentDirectlySupportsCompatibility(deployment, ready.compatibility, clientArtifact), true);
   assert.equal(deploymentSupportsCompatibility(deployment, ready.compatibility, clientArtifact), true);
   assert.equal(deploymentSupportsCompatibility(deployment, ready.compatibility, {
     ...clientArtifact,

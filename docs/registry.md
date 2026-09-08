@@ -153,7 +153,18 @@ npm --prefix contracts/v2 run verify
 SOURCE_REVISION=<full-clean-commit-sha> \
 MN_NETWORK=stagenet \
 npm --prefix contracts/v2 run verify:compatibility
+
+# After reviewing the read-only result, repeat the same verification and
+# atomically publish its deployment-bound evidence into the selected registry.
+SOURCE_REVISION=<full-clean-commit-sha> \
+MN_NETWORK=stagenet \
+npm --prefix contracts/v2 run publish:compatibility
 ```
+
+The compatibility publisher verifies every selected deployment before writing,
+keeps its original compatibility, toolchain, artifact, transaction and
+confirmation fields unchanged, and replaces only the evidence for the exact new
+client tuple. The registry revision covers that evidence.
 
 The `deploymentToolchain` tuple is an operator declaration captured by the
 deployment command. It remains the original deployment tuple and is never

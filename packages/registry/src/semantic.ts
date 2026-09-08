@@ -61,17 +61,23 @@ export function compatibilitySnapshotsEqual(left: CompatibilitySnapshot, right: 
   );
 }
 
+export function deploymentDirectlySupportsCompatibility(
+  deployment: DeploymentRecord,
+  compatibility: CompatibilitySnapshot,
+  clientArtifact: { sourceRevision: string; compilerVersion: string; artifactSha256: string }
+): boolean {
+  return compatibilitySnapshotsEqual(deployment.compatibility, compatibility) &&
+    deployment.artifact.sourceRevision === clientArtifact.sourceRevision &&
+    deployment.artifact.compilerVersion === clientArtifact.compilerVersion &&
+    deployment.artifact.artifactSha256 === clientArtifact.artifactSha256;
+}
+
 export function deploymentSupportsCompatibility(
   deployment: DeploymentRecord,
   compatibility: CompatibilitySnapshot,
   clientArtifact: { sourceRevision: string; compilerVersion: string; artifactSha256: string }
 ): boolean {
-  if (compatibilitySnapshotsEqual(deployment.compatibility, compatibility) &&
-      deployment.artifact.sourceRevision === clientArtifact.sourceRevision &&
-      deployment.artifact.compilerVersion === clientArtifact.compilerVersion &&
-      deployment.artifact.artifactSha256 === clientArtifact.artifactSha256) {
-    return true;
-  }
+  if (deploymentDirectlySupportsCompatibility(deployment, compatibility, clientArtifact)) return true;
   return (deployment.compatibilityVerifications ?? []).some((evidence) =>
     evidence.deploymentId === deployment.deploymentId &&
     evidence.deploymentArtifactSha256 === deployment.artifact.artifactSha256 &&

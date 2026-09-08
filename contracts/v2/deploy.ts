@@ -16,6 +16,7 @@ import { encodeDomainSeparator } from "../../packages/registry/src/domain.js";
 import { TOKEN_DEFINITIONS } from "../../packages/registry/src/tokens.js";
 import {
   compatibilitySnapshotsEqual,
+  deploymentDirectlySupportsCompatibility,
   deploymentSupportsCompatibility,
   validateRegistry
 } from "../../packages/registry/src/semantic.js";
@@ -183,7 +184,7 @@ async function verifyExistingDeploymentWithCurrentArtifacts(
     compilerVersion: COMPATIBILITY.compiler,
     artifactSha256
   };
-  const directCurrentCompatibility = deploymentSupportsCompatibility(record, COMPATIBILITY, clientArtifact);
+  const directCurrentCompatibility = deploymentDirectlySupportsCompatibility(record, COMPATIBILITY, clientArtifact);
   assertPinnedDeploymentArtifact(root, record, artifactRelativePath(token.privacy), sourceRelativePath(token.privacy));
   await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
   const actual = await verifyContract(token, record.contractAddress, record.confirmation);
@@ -255,10 +256,7 @@ async function verifyRegistry(registry: TokenRegistry): Promise<{
     if (!deploymentSupportsCompatibility(result.record, COMPATIBILITY, clientArtifact)) {
       throw new Error(`${token.symbol}: current client compatibility evidence did not bind to the deployment`);
     }
-    const directCurrentCompatibility = compatibilitySnapshotsEqual(record.compatibility, COMPATIBILITY) &&
-      record.artifact.sourceRevision === clientArtifact.sourceRevision &&
-      record.artifact.compilerVersion === clientArtifact.compilerVersion &&
-      record.artifact.artifactSha256 === clientArtifact.artifactSha256;
+    const directCurrentCompatibility = deploymentDirectlySupportsCompatibility(record, COMPATIBILITY, clientArtifact);
     if (compatibilitySnapshotsEqual(registry.compatibility, COMPATIBILITY) && !directCurrentCompatibility) {
       const stored = record.compatibilityVerifications?.find((candidate) =>
         compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
@@ -485,6 +483,21 @@ async function deployAll(): Promise<void> {
   }
 }
 
+async function publishCompatibleRegistry(): Promise<void> {
+  setNetworkId(endpoints.networkId);
+  const registry = await readRegistry(outputPath);
+  if (!registry) throw new Error(`No registry at ${outputPath}`);
+  const verified = await verifyRegistry(registry);
+  const published = await publishReadyRegistry(outputPath, {
+    network: registry.network,
+    compatibility: COMPATIBILITY,
+    deployments: verified.records,
+    revision: deploymentRevision(registry.network, verified.records),
+    generatedAt: new Date().toISOString()
+  });
+  console.log(`[publish-compatible] ${outputPath} ${published.registryRevision}`);
+}
+
 if (command === "deploy") {
   await withFileLock(`${outputPath}.deployment-workflow`, deployAll);
 } else if (command === "verify") {
@@ -503,6 +516,8 @@ if (command === "deploy") {
     compatibility: COMPATIBILITY,
     deployments: [...verified.evidence.entries()].map(([symbol, evidence]) => ({ symbol, evidence }))
   }));
+} else if (command === "publish-compatible") {
+  await withFileLock(`${outputPath}.deployment-workflow`, publishCompatibleRegistry);
 } else {
-  throw new Error("Usage: v2-deploy.ts deploy|verify|verify-compatible");
+  throw new Error("Usage: v2-deploy.ts deploy|verify|verify-compatible|publish-compatible");
 }
