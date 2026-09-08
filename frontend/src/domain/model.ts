@@ -55,6 +55,7 @@ export interface RegistryView {
   revision: string;
   verifiedAt: string | null;
   ready: boolean;
+  clientCompatible: boolean;
   tokens: TokenView[];
 }
 

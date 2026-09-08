@@ -24,7 +24,7 @@ export function useProtocolAdapter(
       return;
     }
 
-    const mismatch = compatibilityMismatchMessage(registry.compatibility);
+    const mismatch = compatibilityMismatchMessage(registry.compatibility, registry.clientCompatible);
     if (mismatch) {
       setState({ kind: 'error', adapter: null, message: mismatch });
       return;

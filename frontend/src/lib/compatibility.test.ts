@@ -16,9 +16,11 @@ describe('browser protocol compatibility', () => {
     const v1Package = JSON.parse(await readFile(resolve(import.meta.dirname, '../../protocols/v1/package.json'), 'utf8'));
     const v2Package = JSON.parse(await readFile(resolve(import.meta.dirname, '../../protocols/v2/package.json'), 'utf8'));
     expect(v1Package.dependencies['@midnight-ntwrk/compact-runtime']).toBe(SUPPORTED_COMPATIBILITY.v1.compactRuntime);
+    expect(v1Package.dependencies['@midnight-ntwrk/compact-js']).toBe('2.5.1');
     expect(v1Package.dependencies['@midnight-ntwrk/midnight-js-contracts']).toBe(SUPPORTED_COMPATIBILITY.v1.midnightJs);
     expect(v1Package.dependencies['@midnight-ntwrk/ledger-v8']).toBe(SUPPORTED_COMPATIBILITY.v1.ledger);
     expect(v2Package.dependencies['@midnight-ntwrk/compact-runtime']).toBe(SUPPORTED_COMPATIBILITY.v2.compactRuntime);
+    expect(v2Package.dependencies['@midnight-ntwrk/compact-js']).toBe(SUPPORTED_COMPATIBILITY.v2.compactJs);
     expect(v2Package.dependencies['@midnight-ntwrk/midnight-js-contracts']).toBe(SUPPORTED_COMPATIBILITY.v2.midnightJs);
     expect(v2Package.dependencies['@midnightntwrk/ledger-v9']).toBe(SUPPORTED_COMPATIBILITY.v2.ledger);
   });
@@ -45,9 +47,14 @@ describe('browser protocol compatibility', () => {
   });
 
   it.each<keyof CompatibilitySnapshot>([
-    'compiler', 'compactRuntime', 'ledger', 'midnightJs', 'walletSdk',
+    'compiler', 'language', 'compactJs', 'compactRuntime', 'ledger', 'onchainRuntime', 'midnightJs', 'walletSdk',
   ])('rejects a mismatch in %s', (field) => {
     const mismatched = { ...SUPPORTED_COMPATIBILITY.v2, [field]: 'other-version' };
     expect(supportsRegistryCompatibility(mismatched)).toBe(false);
+  });
+
+  it('distinguishes a deployment-evidence mismatch from a release tuple mismatch', () => {
+    expect(compatibilityMismatchMessage(SUPPORTED_COMPATIBILITY.v2, false))
+      .toContain('deployments have not been verified');
   });
 });

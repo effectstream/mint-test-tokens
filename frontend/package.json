@@ -7,13 +7,14 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "npm --prefix .. run check && tsc --noEmit && vite build",
+    "dev": "npm run verify:client-artifacts && vite",
+    "build": "npm --prefix .. run check && npm run verify:client-artifacts && tsc --noEmit && vite build",
     "preview": "vite preview",
     "serve:local": "node scripts/serve-static.mjs",
-    "test": "npm --prefix .. run check && vitest run",
-    "test:watch": "vitest",
-    "typecheck": "npm --prefix .. run build && tsc --noEmit"
+    "test": "npm --prefix .. run check && npm run verify:client-artifacts && vitest run",
+    "test:watch": "npm run verify:client-artifacts && vitest",
+    "typecheck": "npm --prefix .. run build && npm run verify:client-artifacts && tsc --noEmit",
+    "verify:client-artifacts": "node scripts/verify-client-artifacts.mjs"
   },
   "dependencies": {
     "@effectstream/mint-test-token-protocol-interface": "file:../packages/protocol-interface",

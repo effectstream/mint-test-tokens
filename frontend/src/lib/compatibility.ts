@@ -1,4 +1,7 @@
-import type { CompatibilitySnapshot } from '@effectstream/mint-test-token-registry';
+import {
+  compatibilitySnapshotsEqual,
+  type CompatibilitySnapshot,
+} from '@effectstream/mint-test-token-registry';
 
 export const SUPPORTED_COMPATIBILITY: Readonly<Record<'v1' | 'v2', CompatibilitySnapshot>> = Object.freeze({
   v1: Object.freeze({
@@ -12,8 +15,11 @@ export const SUPPORTED_COMPATIBILITY: Readonly<Record<'v1' | 'v2', Compatibility
   v2: Object.freeze({
     profile: 'v2',
     compiler: '0.34.0',
+    language: '0.26.0',
+    compactJs: '2.5.5-rc.8',
     compactRuntime: '0.19.0',
     ledger: '1.0.0-rc.3',
+    onchainRuntime: '4.0.0-rc.3',
     midnightJs: '5.0.0-beta.7',
     walletSdk: '2.0.0-beta.2',
   }),
@@ -21,10 +27,17 @@ export const SUPPORTED_COMPATIBILITY: Readonly<Record<'v1' | 'v2', Compatibility
 
 export function supportsRegistryCompatibility(actual: CompatibilitySnapshot): boolean {
   const expected = SUPPORTED_COMPATIBILITY[actual.profile];
-  return Object.entries(expected).every(([field, value]) => actual[field as keyof CompatibilitySnapshot] === value);
+  return compatibilitySnapshotsEqual(actual, expected);
 }
 
-export function compatibilityMismatchMessage(actual: CompatibilitySnapshot): string | null {
-  if (supportsRegistryCompatibility(actual)) return null;
-  return `This ${actual.profile.toUpperCase()} registry uses a different Midnight release than this site build. Open a matching site release or select another network.`;
+export function compatibilityMismatchMessage(
+  actual: CompatibilitySnapshot,
+  clientCompatible = true,
+): string | null {
+  if (!supportsRegistryCompatibility(actual)) {
+    return `This ${actual.profile.toUpperCase()} registry uses a different Midnight release than this site build. Open a matching site release or select another network.`;
+  }
+  return clientCompatible
+    ? null
+    : 'The selected deployments have not been verified with this site release. Open a matching site release or select another network.';
 }

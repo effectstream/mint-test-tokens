@@ -46,6 +46,7 @@ function directory(ready: boolean, revalidating = false): DirectoryState {
       revision: ready ? 'ready-revision' : 'deploying-revision',
       verifiedAt: null,
       ready,
+      clientCompatible: ready,
       tokens: [token],
     },
   };
