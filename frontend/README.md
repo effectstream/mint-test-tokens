@@ -80,6 +80,12 @@ The repository's Git object database is mounted read-only so the build can
 reconstruct both historical compatibility pins and the explicit release commit;
 Git data is never copied into `frontend/dist`.
 
+The build requires the complete Git objects for the revisions listed in
+`frontend/client-artifacts.json` and for the exact release commit. A shallow or
+partial CI checkout must fetch those pinned commits and their objects before
+running the build. Missing objects deliberately fail verification; the verifier
+does not fetch from the network or bypass a missing pin.
+
 ```sh
 release_sha="$(git rev-parse HEAD)"
 release_tag="$(git rev-parse --short=7 "$release_sha")"
