@@ -23,7 +23,7 @@ const { Contract: ShieldedIssuerContract } = await import(shieldedIssuerModulePa
 const { Contract: UnshieldedIssuerContract } = await import(unshieldedIssuerModulePath);
 
 const runtimePackage = JSON.parse(await readFile(packageRequire.resolve("@midnight-ntwrk/compact-runtime/package.json"), "utf8"));
-const expectedRuntime = profile === "v1" ? "0.16.0" : "0.18.0-rc.1";
+const expectedRuntime = profile === "v1" ? "0.16.0" : "0.19.0";
 assert.equal(runtimePackage.version, expectedRuntime);
 
 const bytes = (fill) => new Uint8Array(32).fill(fill);

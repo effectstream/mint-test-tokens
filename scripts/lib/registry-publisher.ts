@@ -79,7 +79,16 @@ export function deploymentRevision(network: NetworkIdentity, deployments: Deploy
       deploymentId: record.deploymentId,
       contractAddress: record.contractAddress,
       tokenId: record.tokenId,
-      artifactSha256: record.artifact.artifactSha256
+      artifactSha256: record.artifact.artifactSha256,
+      compatibilityVerifications: [...(record.compatibilityVerifications ?? [])]
+        .sort((left, right) => JSON.stringify(left.compatibility).localeCompare(JSON.stringify(right.compatibility)))
+        .map((evidence) => ({
+          deploymentId: evidence.deploymentId,
+          deploymentArtifactSha256: evidence.deploymentArtifactSha256,
+          compatibility: evidence.compatibility,
+          artifact: evidence.artifact,
+          verifiedAt: evidence.verifiedAt
+        }))
     };
   });
   return createHash("sha256").update(JSON.stringify({ network, identities })).digest("hex");

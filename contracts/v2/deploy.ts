@@ -14,15 +14,20 @@ import * as Shielded from "./managed/shielded/contract/index.js";
 import * as Unshielded from "./managed/unshielded/contract/index.js";
 import { encodeDomainSeparator } from "../../packages/registry/src/domain.js";
 import { TOKEN_DEFINITIONS } from "../../packages/registry/src/tokens.js";
-import { validateRegistry } from "../../packages/registry/src/semantic.js";
+import {
+  compatibilitySnapshotsEqual,
+  deploymentSupportsCompatibility,
+  validateRegistry
+} from "../../packages/registry/src/semantic.js";
 import type {
-  CompatibilitySnapshot,
+  ClientCompatibilityVerification,
   DeploymentRecord,
   MaintenanceAuthorityStatus,
   NetworkIdentity,
   NetworkKey,
   TokenRegistry,
-  TokenSymbol
+  TokenSymbol,
+  VerifiedCompatibilitySnapshot
 } from "../../packages/registry/src/types.js";
 import { writeJsonAtomic, withFileLock } from "../../scripts/lib/atomic-json.js";
 import {
@@ -33,7 +38,9 @@ import {
   type DeploymentJournal
 } from "../../scripts/lib/deployment-journal.js";
 import {
+  assertClientCompatibilityVerification,
   assertDeploymentProvenance,
+  assertPinnedDeploymentArtifact,
   hashDirectory,
   queryChainDeployment,
   resolveReproducibleSourceRevision,
@@ -54,16 +61,19 @@ import {
 } from "../../scripts/lib/registry-publisher.js";
 import { validateMasterSeedHex } from "../../scripts/lib/wallet-seed.js";
 
-const COMPATIBILITY: CompatibilitySnapshot = {
+const COMPATIBILITY: VerifiedCompatibilitySnapshot = {
   profile: "v2",
-  compiler: "0.33.0-rc.2",
-  compactRuntime: "0.18.0-rc.1",
+  compiler: "0.34.0",
+  language: "0.26.0",
+  compactJs: "2.5.5-rc.8",
+  compactRuntime: "0.19.0",
   ledger: "1.0.0-rc.3",
-  midnightJs: "5.0.0-beta.6",
+  onchainRuntime: "4.0.0-rc.3",
+  midnightJs: "5.0.0-beta.7",
   walletSdk: "2.0.0-beta.2"
 };
-const DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "5.0.0-beta.6", walletSdk: "2.0.0-beta.2" } as const;
-const EMBEDDED_COMPILER_VERSION = "0.33.0";
+const DEPLOYMENT_TOOLCHAIN = { runner: "@midnight-ntwrk/testkit-js", runnerVersion: "5.0.0-beta.7", walletSdk: "2.0.0-beta.2" } as const;
+const EMBEDDED_COMPILER_VERSION = "0.34.0";
 const SOURCE_PATHS = sourcePathsForProfile("v2");
 const TIMEOUT_MS = Number(process.env.MN_TIMEOUT_MS ?? 180_000);
 const command = process.argv[2] ?? "deploy";
@@ -116,6 +126,8 @@ async function stackIdentity(): Promise<NetworkIdentity> {
 
 const moduleFor = (privacy: "shielded" | "unshielded") => privacy === "shielded" ? Shielded : Unshielded;
 const artifactPath = (privacy: "shielded" | "unshielded") => resolve(root, "contracts", "v2", "managed", privacy);
+const artifactRelativePath = (privacy: "shielded" | "unshielded") => `contracts/v2/managed/${privacy}`;
+const sourceRelativePath = (privacy: "shielded" | "unshielded") => `contracts/v2/${privacy}-token.compact`;
 
 async function verifyContract(
   token: (typeof TOKEN_DEFINITIONS)[number],
@@ -158,7 +170,72 @@ async function verifyContract(
   };
 }
 
-async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol, DeploymentRecord>> {
+async function verifyExistingDeploymentWithCurrentArtifacts(
+  token: (typeof TOKEN_DEFINITIONS)[number],
+  record: DeploymentRecord,
+  currentNetwork: NetworkIdentity,
+  sourceRevision: string
+): Promise<{ record: DeploymentRecord; evidence?: ClientCompatibilityVerification }> {
+  const path = artifactPath(token.privacy);
+  const artifactSha256 = await hashDirectory(path);
+  const clientArtifact = {
+    sourceRevision,
+    compilerVersion: COMPATIBILITY.compiler,
+    artifactSha256
+  };
+  const directCurrentCompatibility = deploymentSupportsCompatibility(record, COMPATIBILITY, clientArtifact);
+  assertPinnedDeploymentArtifact(root, record, artifactRelativePath(token.privacy), sourceRelativePath(token.privacy));
+  await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
+  const actual = await verifyContract(token, record.contractAddress, record.confirmation);
+  if (actual.tokenId !== record.tokenId) throw new DeploymentVerificationError(`${token.symbol}: recorded token id mismatch`);
+  if (!record.deploymentToolchain) throw new Error(`${token.symbol}: active deployment lacks original toolchain provenance`);
+  assertDeploymentProvenance(record, {
+    network: currentNetwork,
+    compatibility: directCurrentCompatibility ? COMPATIBILITY : record.compatibility,
+    deploymentToolchain: directCurrentCompatibility ? DEPLOYMENT_TOOLCHAIN : record.deploymentToolchain,
+    sourceRevision: directCurrentCompatibility ? sourceRevision : record.artifact.sourceRevision,
+    compilerVersion: directCurrentCompatibility ? COMPATIBILITY.compiler : record.artifact.compilerVersion,
+    artifactSha256: directCurrentCompatibility ? artifactSha256 : record.artifact.artifactSha256,
+    maintenanceAuthority: actual.maintenanceAuthority,
+    chainDeployment: actual.chainDeployment
+  });
+  if (directCurrentCompatibility) return { record };
+  const storedEvidence = record.compatibilityVerifications?.find((candidate) =>
+    compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
+  );
+  if (storedEvidence) {
+    assertClientCompatibilityVerification(record, storedEvidence, {
+      compatibility: COMPATIBILITY,
+      sourceRevision,
+      compilerVersion: COMPATIBILITY.compiler,
+      artifactSha256
+    });
+  }
+  const evidence: ClientCompatibilityVerification = storedEvidence ?? {
+    deploymentId: record.deploymentId,
+    deploymentArtifactSha256: record.artifact.artifactSha256,
+    compatibility: COMPATIBILITY,
+    artifact: clientArtifact,
+    verifiedAt: new Date().toISOString()
+  };
+  return {
+    evidence,
+    record: {
+      ...record,
+      compatibilityVerifications: [
+        ...(record.compatibilityVerifications ?? []).filter((candidate) =>
+          !compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
+        ),
+        evidence
+      ]
+    }
+  };
+}
+
+async function verifyRegistry(registry: TokenRegistry): Promise<{
+  records: Map<TokenSymbol, DeploymentRecord>;
+  evidence: Map<TokenSymbol, ClientCompatibilityVerification>;
+}> {
   const validation = validateRegistry(registry, networkKey);
   if (!validation.ok) throw new Error(`Registry validation failed:\n${validation.errors.join("\n")}`);
   if (registry.status !== "ready") throw new Error(`${outputPath} is ${registry.status}, not ready`);
@@ -166,31 +243,38 @@ async function verifyRegistry(registry: TokenRegistry): Promise<Map<TokenSymbol,
   if (registry.network.protocolFamily !== currentNetwork.protocolFamily || registry.network.chainId !== currentNetwork.chainId || registry.network.stackIdentity !== currentNetwork.stackIdentity) {
     throw new Error("Registry identity does not match the connected chain/runtime/genesis");
   }
+  const sourceRevision = resolveReproducibleSourceRevision(root, process.env.SOURCE_REVISION, SOURCE_PATHS);
   const verified = new Map<TokenSymbol, DeploymentRecord>();
+  const evidence = new Map<TokenSymbol, ClientCompatibilityVerification>();
   for (const token of registry.tokens) {
     const record = token.deployments.find((item) => item.deploymentId === token.activeDeploymentId && item.status === "active");
     if (!record) throw new Error(`${token.symbol}: missing selected active deployment`);
     const expected = TOKEN_DEFINITIONS.find((item) => item.symbol === token.symbol)!;
-    const path = artifactPath(expected.privacy);
-    const sourceRevision = resolveReproducibleSourceRevision(root, record.artifact.sourceRevision, SOURCE_PATHS);
-    const artifactSha256 = await hashDirectory(path);
-    await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
-    const actual = await verifyContract(expected, record.contractAddress, record.confirmation);
-    if (actual.tokenId !== record.tokenId) throw new Error(`${token.symbol}: recorded token id mismatch`);
-    assertDeploymentProvenance(record, {
-      network: currentNetwork,
-      compatibility: COMPATIBILITY,
-      deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
-      sourceRevision,
-      compilerVersion: COMPATIBILITY.compiler,
-      artifactSha256,
-      maintenanceAuthority: actual.maintenanceAuthority,
-      chainDeployment: actual.chainDeployment
-    });
-    verified.set(token.symbol, { ...record, verifiedAt: new Date().toISOString() });
-    console.log(`[verify] ${token.symbol} ${record.contractAddress} ${record.tokenId} onchain+artifact+source+confirmation=verified declared-toolchain=matches-release-config`);
+    const result = await verifyExistingDeploymentWithCurrentArtifacts(expected, record, currentNetwork, sourceRevision);
+    const clientArtifact = result.evidence?.artifact ?? record.artifact;
+    if (!deploymentSupportsCompatibility(result.record, COMPATIBILITY, clientArtifact)) {
+      throw new Error(`${token.symbol}: current client compatibility evidence did not bind to the deployment`);
+    }
+    const directCurrentCompatibility = compatibilitySnapshotsEqual(record.compatibility, COMPATIBILITY) &&
+      record.artifact.sourceRevision === clientArtifact.sourceRevision &&
+      record.artifact.compilerVersion === clientArtifact.compilerVersion &&
+      record.artifact.artifactSha256 === clientArtifact.artifactSha256;
+    if (compatibilitySnapshotsEqual(registry.compatibility, COMPATIBILITY) && !directCurrentCompatibility) {
+      const stored = record.compatibilityVerifications?.find((candidate) =>
+        compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
+      );
+      assertClientCompatibilityVerification(record, stored, {
+        compatibility: COMPATIBILITY,
+        sourceRevision,
+        compilerVersion: COMPATIBILITY.compiler,
+        artifactSha256: clientArtifact.artifactSha256
+      });
+    }
+    verified.set(token.symbol, result.record);
+    if (result.evidence) evidence.set(token.symbol, result.evidence);
+    console.log(`[verify] ${token.symbol} ${record.contractAddress} ${record.tokenId} original-provenance+pinned-git+current-artifact+onchain-verifiers=verified`);
   }
-  return verified;
+  return { records: verified, evidence };
 }
 
 async function deployAll(): Promise<void> {
@@ -294,32 +378,9 @@ async function deployAll(): Promise<void> {
         const prior = records.get(token.symbol);
         if (prior) {
           try {
-            const path = artifactPath(token.privacy);
-            const priorSourceRevision = resolveReproducibleSourceRevision(root, prior.artifact.sourceRevision, SOURCE_PATHS);
-            const artifactSha256 = await hashDirectory(path);
-            await verifyEmbeddedCompilerMetadata(path, EMBEDDED_COMPILER_VERSION, COMPATIBILITY.compactRuntime);
-            const checked = await verifyContract(token, prior.contractAddress, prior.confirmation);
-            if (checked.tokenId !== prior.tokenId) throw new Error("token id changed");
-            const refreshed: DeploymentRecord = {
-              ...prior,
-              deploymentId: deploymentIdentity(token.symbol, identity, prior.contractAddress, checked.chainDeployment.transactionHash),
-              deploymentTransaction: checked.chainDeployment.transactionHash,
-              confirmation: { blockHeight: checked.chainDeployment.blockHeight, blockHash: checked.chainDeployment.blockHash },
-              verifiedAt: new Date().toISOString(),
-              maintenanceAuthority: checked.maintenanceAuthority
-            };
-            assertDeploymentProvenance(refreshed, {
-              network: identity,
-              compatibility: COMPATIBILITY,
-              deploymentToolchain: DEPLOYMENT_TOOLCHAIN,
-              sourceRevision: priorSourceRevision,
-              compilerVersion: COMPATIBILITY.compiler,
-              artifactSha256,
-              maintenanceAuthority: checked.maintenanceAuthority,
-              chainDeployment: checked.chainDeployment
-            });
-            records.set(token.symbol, refreshed);
-            console.log(`[resume] ${token.symbol} ${prior.contractAddress}`);
+            const compatible = await verifyExistingDeploymentWithCurrentArtifacts(token, prior, identity, sourceRevision);
+            records.set(token.symbol, compatible.record);
+            console.log(`[resume-compatible] ${token.symbol} ${prior.contractAddress}`);
             continue;
           } catch (error) {
             if (!(error instanceof DeploymentVerificationError)) throw error;
@@ -432,6 +493,16 @@ if (command === "deploy") {
   if (!registry) throw new Error(`No registry at ${outputPath}`);
   await verifyRegistry(registry);
   console.log(`[verify] ${registry.tokens.length} canonical tokens verified`);
+} else if (command === "verify-compatible") {
+  setNetworkId(endpoints.networkId);
+  const registry = await readRegistry(outputPath);
+  if (!registry) throw new Error(`No registry at ${outputPath}`);
+  const verified = await verifyRegistry(registry);
+  console.log(JSON.stringify({
+    network: networkKey,
+    compatibility: COMPATIBILITY,
+    deployments: [...verified.evidence.entries()].map(([symbol, evidence]) => ({ symbol, evidence }))
+  }));
 } else {
-  throw new Error("Usage: v2-deploy.ts deploy|verify");
+  throw new Error("Usage: v2-deploy.ts deploy|verify|verify-compatible");
 }

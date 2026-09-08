@@ -10,10 +10,19 @@ export type MaintenanceAuthorityStatus = "retained" | "renounced" | "unknown";
 export interface CompatibilitySnapshot {
   profile: "v1" | "v2";
   compiler: string;
+  language?: string;
+  compactJs?: string;
   compactRuntime: string;
   ledger: string;
+  onchainRuntime?: string;
   midnightJs: string;
   walletSdk: string;
+}
+
+export interface VerifiedCompatibilitySnapshot extends CompatibilitySnapshot {
+  language: string;
+  compactJs: string;
+  onchainRuntime: string;
 }
 
 export interface ArtifactProvenance {
@@ -26,6 +35,16 @@ export interface DeploymentToolchain {
   runner: string;
   runnerVersion: string;
   walletSdk: string;
+}
+export interface ClientCompatibilityVerification {
+  /** Repeats and binds this evidence to the immutable deployment identity. */
+  deploymentId: string;
+  /** Binds this evidence to the immutable artifact digest recorded at deployment. */
+  deploymentArtifactSha256: string;
+  compatibility: VerifiedCompatibilitySnapshot;
+  /** Client artifacts independently checked against the deployment's on-chain verifier keys. */
+  artifact: Pick<ArtifactProvenance, "sourceRevision" | "compilerVersion" | "artifactSha256">;
+  verifiedAt: string;
 }
 export interface DeploymentRecord {
   deploymentId: string;
@@ -45,6 +64,8 @@ export interface DeploymentRecord {
     address: string | null;
   };
   artifact: ArtifactProvenance;
+  /** Additive client stacks proven compatible without rewriting deployment provenance. */
+  compatibilityVerifications?: ClientCompatibilityVerification[];
 }
 export interface TokenRecord {
   symbol: TokenSymbol;

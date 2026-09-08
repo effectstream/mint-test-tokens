@@ -36,7 +36,12 @@ MN_PROOF_SERVER_URL=http://127.0.0.1:6300 \
 npm run deploy:v1
 ```
 
-Midnight 2.x has an isolated prerelease dependency context:
+Midnight 2.x has an isolated dependency context aligned with shielded-night v2:
+Compact compiler `0.34.0` / language `0.26.0`, Compact JS `2.5.5-rc.8`,
+Compact runtime `0.19.0`, Midnight.js and Testkit `5.0.0-beta.7`, ledger-v9
+`1.0.0-rc.3`, on-chain runtime-v4 `4.0.0-rc.3`, and wallet SDK
+`2.0.0-beta.2`. Use the official `compactc-v0.34.0` release to regenerate
+artifacts; update the tuple as one coherent stack.
 
 ```sh
 npm --prefix contracts/v2 ci --ignore-scripts
@@ -89,6 +94,15 @@ contract address and canonical indexer transaction hash, so a deterministic
 same-address deployment after a chain reset preserves the old stack's record
 as superseded history.
 
+A compatible client rebuild does not rewrite how an existing contract was
+deployed. Each optional `compatibilityVerifications` entry repeats the original
+`deploymentId` and deployment artifact digest, then records the exact compatible
+client stack and its separately pinned source/artifact digest. Publication is
+allowed only after the original artifact bytes are re-established from their
+recorded Git revision, the new artifact tree matches its own clean revision, and
+every new verifier key matches the existing contract on chain. These entries are
+part of `registryRevision`; changing a client artifact changes the revision.
+
 If a deployment process is killed, a stale `.lock` file can remain beside the
 registry or private journal. Read the PID stored in the lock, confirm that no
 process with that PID is running, and then remove the lock manually. Never
@@ -115,7 +129,9 @@ metadata, proves the recorded source paths match the recorded Git commit, and
 requires the current maintenance authority to match. It queries the original
 `ContractDeploy` action at the recorded height and independently matches its
 canonical transaction hash, block height and block hash. Network identity and
-the pinned compatibility declaration must also match:
+the pinned compatibility declaration must also match. For an identity-preserving
+client upgrade, verification separately hashes the original deployment artifacts
+from their pinned Git commit and the checked-out client artifacts:
 
 ```sh
 MN_NETWORK=undeployed \
@@ -131,12 +147,18 @@ MN_NODE_URL=http://127.0.0.1:9944 \
 MN_INDEXER_URL=http://127.0.0.1:8088/api/v4/graphql \
 MN_INDEXER_WS_URL=ws://127.0.0.1:8088/api/v4/graphql/ws \
 npm --prefix contracts/v2 run verify
+
+# Produce read-only compatibility evidence for existing v2 identities. This
+# prints verified evidence and does not modify metadata.
+SOURCE_REVISION=<full-clean-commit-sha> \
+MN_NETWORK=stagenet \
+npm --prefix contracts/v2 run verify:compatibility
 ```
 
 The `deploymentToolchain` tuple is an operator declaration captured by the
-deployment command. Read-only verification confirms that it matches this
-release's pinned runner configuration; it cannot cryptographically prove which
-historical process invoked the deployment. The on-chain verifier keys,
+deployment command. It remains the original deployment tuple and is never
+relabelled by a later client-compatibility check; it cannot cryptographically
+prove which historical process invoked the deployment. The on-chain verifier keys,
 immutable state, current authority, deploy action, block evidence, source tree
 and artifact digest are independently checked and reported separately.
 
@@ -182,6 +204,18 @@ process supervisor with a wall-clock limit. If the supervisor terminates the
 process, the kernel releases the profile lock and the private deployment journal
 retains the pre-submission intent for mandatory chain reconciliation before any
 retry.
+
+The Preprod public mint/discovery smoke command supports the same
+`MN_WALLET_CHECKPOINT_FILE` after the registry is ready. It requires
+`MN_SKIP_RECIPIENT_SPEND=1`: the restored funded signer must be fully synchronized
+with positive DUST, while the fresh recipient waits only for its shielded and
+unshielded streams because it does not construct a return transaction. Run
+`npm run test:wallet:v1` through the same kind of operating-system wall-clock
+supervisor. Each token prints an intent line before transaction construction, a
+public transaction ID after confirmation, and a separate discovery line after
+the recipient balance is observed. Preserve the private supervisor log and
+reconcile any intent without a confirmation line before retry; a confirmed mint
+without a discovery line must be observed without submitting a replacement.
 
 ## Issuer interface
 
