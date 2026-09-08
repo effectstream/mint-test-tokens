@@ -310,7 +310,7 @@ async function deployAll(): Promise<void> {
     faucet: undefined
   }, seed));
   try {
-    await withTimeout("wallet start", wallet.start(false));
+    await withTimeout("wallet start", wallet.start(networkKey === "undeployed"));
     await waitForFundedDeploymentWallet(wallet.wallet, TIMEOUT_MS);
     await withFileLock(journalPath, async () => {
       const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
