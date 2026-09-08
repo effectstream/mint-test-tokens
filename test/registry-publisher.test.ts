@@ -27,6 +27,7 @@ import {
   assertDeploymentProvenance,
   assertPinnedDeploymentArtifact,
   hashGitDirectory,
+  publishedClientSourceRevision,
   resolveReproducibleSourceRevision,
   sourcePathsForProfile
 } from "../scripts/lib/deployment-provenance.js";
@@ -237,6 +238,13 @@ test("compatibility evidence is deployment-bound and changes the registry revisi
     compilerVersion: evidence.artifact.compilerVersion,
     artifactSha256: evidence.artifact.artifactSha256
   }));
+  assert.equal(publishedClientSourceRevision({ ...record, compatibilityVerifications: [evidence] }, aligned), evidence.artifact.sourceRevision);
+  assert.equal(publishedClientSourceRevision({
+    ...record,
+    compatibility: aligned,
+    artifact: { ...evidence.artifact, openZeppelinRelease: null }
+  }, aligned), evidence.artifact.sourceRevision);
+  assert.throws(() => publishedClientSourceRevision(record, aligned), /no published source revision/);
   const upgraded = new Map(original);
   upgraded.set("twBTC", { ...record, compatibilityVerifications: [evidence] });
   assert.notEqual(deploymentRevision(network, original), deploymentRevision(network, upgraded));
