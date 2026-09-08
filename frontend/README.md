@@ -165,11 +165,10 @@ npx --prefix frontend wrangler pages deploy "$release_dir" --project-name mint-t
 ```
 
 An explicitly labeled preview may contain different validated states for its
-tracked public registries. In the current source, Preview and Stagenet are
-`ready` with six verified active deployments each, while Preprod is
-`unavailable` with empty deployments and no canonical addresses. Mint controls
-follow the selected registry independently. Mint-ready publication for a
-network requires verified on-chain identities and a ready semantic registry.
+tracked public registries. In the current source, Preview, Preprod and Stagenet
+are `ready` with six verified active deployments each. Mint controls follow the
+selected registry independently. Mint-ready publication for a network requires
+verified on-chain identities and a ready semantic registry.
 In every release, verify the deployed home page, all three public JSON files
 byte-for-byte, wildcard JSON CORS, their single cache policy, representative
 v1/v2 artifacts, and 404 responses for

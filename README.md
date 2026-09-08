@@ -47,8 +47,8 @@ Verify its JSON revision against the tracked files after each publication.
 | Network | Protocol | Tracked status | Registry revision |
 |---|---|---|---|
 | Preview | Midnight 1.x | Ready; six verified active deployment identities | `c15d38f3a00a319c15ff10e39a2d4926763a4438e7fbb3bfc202bd15aa5a7d28` |
-| Preprod | Midnight 1.x | Unavailable; no active deployment identities | `unreleased` |
-| Stagenet | Midnight 2.x | Ready; six verified active deployment identities | `7af8d3889254783bf8383beb141e4d6a5b8a43ee6c600ad5989cb6d448c071a0` |
+| Preprod | Midnight 1.x | Ready; six verified active deployment identities | `ebd5eaba58ab2a7789d1e13cac3c1cc793f163e2e6f372f7839029c7f2d9f4bc` |
+| Stagenet | Midnight 2.x | Ready; six verified active deployment identities | `59041d2fd2acfdad53e437e5a4d2ba88a6f24e4f9e55869b66f465f3da11a0d1` |
 
-The site evaluates each selected network independently. Ready Preview and
-Stagenet registries do not enable minting on Preprod.
+The site evaluates each selected network independently. Preview, Preprod and
+Stagenet each publish six verified active deployment identities.
