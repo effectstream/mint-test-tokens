@@ -78,7 +78,11 @@ const [deployer, recipient] = await Promise.all([
 
 let operationError: unknown;
 try {
-  const started = await Promise.allSettled([deployer.start(false), recipient.start(false)]);
+  const requestLocalFunding = networkKey === "undeployed";
+  const started = await Promise.allSettled([
+    deployer.start(requestLocalFunding),
+    recipient.start(requestLocalFunding)
+  ]);
   const startFailure = started.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (startFailure) throw startFailure.reason;
   await Promise.all([

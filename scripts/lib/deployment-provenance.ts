@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
+import { compatibilitySnapshotsEqual } from "../../packages/registry/src/semantic.js";
 import type {
   CompatibilitySnapshot,
   ClientCompatibilityVerification,
@@ -184,6 +185,21 @@ export function assertClientCompatibilityVerification(
   if (evidence.artifact.compilerVersion !== expected.compilerVersion) mismatches.push("compiler declaration");
   if (evidence.artifact.artifactSha256 !== expected.artifactSha256) mismatches.push("client artifact digest");
   if (mismatches.length) throw new Error(`Client compatibility verification mismatch: ${mismatches.join(", ")}`);
+}
+
+/** Select the immutable source revision already published for the active client tuple. */
+export function publishedClientSourceRevision(
+  record: DeploymentRecord,
+  compatibility: CompatibilitySnapshot
+): string {
+  const evidence = record.compatibilityVerifications?.find((candidate) =>
+    compatibilitySnapshotsEqual(candidate.compatibility, compatibility)
+  );
+  if (evidence) return evidence.artifact.sourceRevision;
+  if (compatibilitySnapshotsEqual(record.compatibility, compatibility)) {
+    return record.artifact.sourceRevision;
+  }
+  throw new Error("Deployment has no published source revision for the current client compatibility");
 }
 
 export async function verifyEmbeddedCompilerMetadata(

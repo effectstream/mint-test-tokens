@@ -21,6 +21,11 @@ exactly 32 or 64 bytes of hexadecimal text. Both forms are passed to the pinned
 wallet SDK's account-0/index-0 role derivation. Keep the file outside the
 repository with owner-only permissions.
 
+On `undeployed`, the v2 deployment and distinct-recipient wallet-test runners
+request local faucet funding so fresh synthetic wallets can pay transaction
+fees. Stagenet always starts those wallets without a faucet request and requires
+the supplied account to expose positive synchronized DUST.
+
 Midnight 1.x uses the root dependency context:
 
 ```sh

@@ -43,6 +43,7 @@ import {
   assertDeploymentProvenance,
   assertPinnedDeploymentArtifact,
   hashDirectory,
+  publishedClientSourceRevision,
   queryChainDeployment,
   resolveReproducibleSourceRevision,
   sourcePathsForProfile,
@@ -204,15 +205,18 @@ async function verifyExistingDeploymentWithCurrentArtifacts(
   const storedEvidence = record.compatibilityVerifications?.find((candidate) =>
     compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
   );
-  if (storedEvidence) {
-    assertClientCompatibilityVerification(record, storedEvidence, {
+  const reusableEvidence = storedEvidence && deploymentSupportsCompatibility(record, COMPATIBILITY, clientArtifact)
+    ? storedEvidence
+    : undefined;
+  if (reusableEvidence) {
+    assertClientCompatibilityVerification(record, reusableEvidence, {
       compatibility: COMPATIBILITY,
       sourceRevision,
       compilerVersion: COMPATIBILITY.compiler,
       artifactSha256
     });
   }
-  const evidence: ClientCompatibilityVerification = storedEvidence ?? {
+  const evidence: ClientCompatibilityVerification = reusableEvidence ?? {
     deploymentId: record.deploymentId,
     deploymentArtifactSha256: record.artifact.artifactSha256,
     compatibility: COMPATIBILITY,
@@ -233,7 +237,7 @@ async function verifyExistingDeploymentWithCurrentArtifacts(
   };
 }
 
-async function verifyRegistry(registry: TokenRegistry): Promise<{
+async function verifyRegistry(registry: TokenRegistry, mode: "published" | "candidate"): Promise<{
   records: Map<TokenSymbol, DeploymentRecord>;
   evidence: Map<TokenSymbol, ClientCompatibilityVerification>;
 }> {
@@ -244,20 +248,37 @@ async function verifyRegistry(registry: TokenRegistry): Promise<{
   if (registry.network.protocolFamily !== currentNetwork.protocolFamily || registry.network.chainId !== currentNetwork.chainId || registry.network.stackIdentity !== currentNetwork.stackIdentity) {
     throw new Error("Registry identity does not match the connected chain/runtime/genesis");
   }
-  const sourceRevision = resolveReproducibleSourceRevision(root, process.env.SOURCE_REVISION, SOURCE_PATHS);
+  if (mode === "published" && !compatibilitySnapshotsEqual(registry.compatibility, COMPATIBILITY)) {
+    throw new Error("Registry does not publish compatibility with the current client stack");
+  }
+  const candidateSourceRevision = mode === "candidate"
+    ? resolveReproducibleSourceRevision(root, process.env.SOURCE_REVISION, SOURCE_PATHS)
+    : undefined;
   const verified = new Map<TokenSymbol, DeploymentRecord>();
   const evidence = new Map<TokenSymbol, ClientCompatibilityVerification>();
   for (const token of registry.tokens) {
     const record = token.deployments.find((item) => item.deploymentId === token.activeDeploymentId && item.status === "active");
     if (!record) throw new Error(`${token.symbol}: missing selected active deployment`);
     const expected = TOKEN_DEFINITIONS.find((item) => item.symbol === token.symbol)!;
+    const publishedSourceRevision = mode === "published"
+      ? publishedClientSourceRevision(record, COMPATIBILITY)
+      : undefined;
+    if (mode === "published" && process.env.SOURCE_REVISION?.trim() &&
+        process.env.SOURCE_REVISION.trim().toLowerCase() !== publishedSourceRevision) {
+      throw new Error(`${token.symbol}: SOURCE_REVISION does not match the published client evidence`);
+    }
+    const sourceRevision = candidateSourceRevision ?? resolveReproducibleSourceRevision(
+      root,
+      publishedSourceRevision,
+      SOURCE_PATHS
+    );
     const result = await verifyExistingDeploymentWithCurrentArtifacts(expected, record, currentNetwork, sourceRevision);
     const clientArtifact = result.evidence?.artifact ?? record.artifact;
     if (!deploymentSupportsCompatibility(result.record, COMPATIBILITY, clientArtifact)) {
       throw new Error(`${token.symbol}: current client compatibility evidence did not bind to the deployment`);
     }
     const directCurrentCompatibility = deploymentDirectlySupportsCompatibility(record, COMPATIBILITY, clientArtifact);
-    if (compatibilitySnapshotsEqual(registry.compatibility, COMPATIBILITY) && !directCurrentCompatibility) {
+    if (mode === "published" && !directCurrentCompatibility) {
       const stored = record.compatibilityVerifications?.find((candidate) =>
         compatibilitySnapshotsEqual(candidate.compatibility, COMPATIBILITY)
       );
@@ -310,7 +331,7 @@ async function deployAll(): Promise<void> {
     faucet: undefined
   }, seed));
   try {
-    await withTimeout("wallet start", wallet.start(false));
+    await withTimeout("wallet start", wallet.start(networkKey === "undeployed"));
     await waitForFundedDeploymentWallet(wallet.wallet, TIMEOUT_MS);
     await withFileLock(journalPath, async () => {
       const stored = (await readRegistry(journalPath)) as unknown as Partial<DeploymentJournal> | undefined;
@@ -487,7 +508,7 @@ async function publishCompatibleRegistry(): Promise<void> {
   setNetworkId(endpoints.networkId);
   const registry = await readRegistry(outputPath);
   if (!registry) throw new Error(`No registry at ${outputPath}`);
-  const verified = await verifyRegistry(registry);
+  const verified = await verifyRegistry(registry, "candidate");
   const published = await publishReadyRegistry(outputPath, {
     network: registry.network,
     compatibility: COMPATIBILITY,
@@ -504,13 +525,13 @@ if (command === "deploy") {
   setNetworkId(endpoints.networkId);
   const registry = await readRegistry(outputPath);
   if (!registry) throw new Error(`No registry at ${outputPath}`);
-  await verifyRegistry(registry);
+  await verifyRegistry(registry, "published");
   console.log(`[verify] ${registry.tokens.length} canonical tokens verified`);
 } else if (command === "verify-compatible") {
   setNetworkId(endpoints.networkId);
   const registry = await readRegistry(outputPath);
   if (!registry) throw new Error(`No registry at ${outputPath}`);
-  const verified = await verifyRegistry(registry);
+  const verified = await verifyRegistry(registry, "candidate");
   console.log(JSON.stringify({
     network: networkKey,
     compatibility: COMPATIBILITY,
