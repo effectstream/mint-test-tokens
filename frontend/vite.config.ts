@@ -27,7 +27,19 @@ const artifactTypes = new Map([
   ['.zkir', 'application/octet-stream'],
 ]);
 
-function profileRuntimeResolution() {
+// The browser `Buffer` implementation the runtime shim installs. Exported so Vitest binds
+// `buffer` to the npm package exactly like the browser build does; under plain Node
+// resolution the specifier would give the shim Node's own builtin `Buffer` and the
+// regression tests would never exercise the browser implementation.
+export const browserBufferAlias = {
+  buffer: resolve(here, 'node_modules/buffer/index.js'),
+} as const;
+
+// Exported so `vitest.config.ts` binds the generated contracts to the same pinned
+// Compact runtime the production build uses. Without it Node resolution would give the
+// v2 generated contract the root workspace's 0.16.0 runtime instead of the v2 profile's
+// 0.19.0, and the WASM instances of a profile's runtime and its contract would differ.
+export function profileRuntimeResolution() {
   return {
     name: 'profile-compact-runtime-resolution',
     enforce: 'pre' as const,
@@ -146,6 +158,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      ...browserBufferAlias,
       assert: resolve(here, 'node_modules/assert/build/assert.js'),
       'isomorphic-ws': resolve(here, 'src/shims/isomorphic-ws.ts'),
     },

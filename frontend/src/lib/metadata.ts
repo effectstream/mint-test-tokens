@@ -98,8 +98,66 @@ export async function fetchRegistry(network: NetworkKey, signal?: AbortSignal): 
   return result.value;
 }
 
-export async function localMetadataAvailable(signal?: AbortSignal): Promise<boolean> {
-  if (import.meta.env.DEV || new URLSearchParams(window.location.search).get('local') === '1') return true;
+/** The parts of `window.location` the local-registry policy reads. */
+export type ProbeLocation = Pick<Location, 'hostname' | 'search'>;
+
+const LOCAL_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.home.arpa'];
+
+/**
+ * True when the origin's hostname is one that can plausibly host a local (undeployed)
+ * registry: loopback, an unspecified address, an RFC 1918 or link-local address, an IPv6
+ * unique-local or link-local address, or a reserved local-network name suffix.
+ *
+ * Public names are not local even when they resolve to a loopback address, so a public
+ * deployment never probes for a file the release deliberately omits. Use `?local=1` to opt
+ * such a host in.
+ */
+export function isLocalRegistryHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (host === '') return false;
+  if (host === 'localhost' || host === '0.0.0.0') return true;
+  if (LOCAL_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true;
+
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number);
+    if (octets.some((octet) => octet > 255)) return false;
+    const [first, second] = octets;
+    return first === 127
+      || first === 10
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 168)
+      || (first === 169 && second === 254);
+  }
+
+  if (!host.includes(':')) return false;
+  if (host === '::1') return true;
+  const [firstHextet] = host.split(':');
+  if (!/^[0-9a-f]{1,4}$/.test(firstHextet)) return false;
+  const prefix = Number.parseInt(firstHextet, 16);
+  // fc00::/7 (unique local) and fe80::/10 (link local).
+  return (prefix >= 0xfc00 && prefix <= 0xfdff) || (prefix >= 0xfe80 && prefix <= 0xfebf);
+}
+
+/**
+ * Whether this origin may request `/metadata.undeployed.json` at all. A public host never
+ * does unless the URL asks for local mode explicitly, so its console stays free of the
+ * expected 404 for a file the public release never contains.
+ */
+export function localMetadataProbeAllowed(location: ProbeLocation = window.location): boolean {
+  if (import.meta.env.DEV) return true;
+  const search = new URLSearchParams(location.search);
+  return search.get('local') === '1'
+    || search.get('network') === 'undeployed'
+    || isLocalRegistryHost(location.hostname);
+}
+
+export async function localMetadataAvailable(
+  signal?: AbortSignal,
+  location: ProbeLocation = window.location,
+): Promise<boolean> {
+  if (import.meta.env.DEV || new URLSearchParams(location.search).get('local') === '1') return true;
+  if (!localMetadataProbeAllowed(location)) return false;
   try {
     const response = await fetch('/metadata.undeployed.json', { method: 'HEAD', cache: 'no-store', signal });
     return response.ok && (response.headers.get('content-type')?.includes('application/json') ?? false);

@@ -1,3 +1,6 @@
+// Must stay the first import: the pinned Midnight bundles need `globalThis.Buffer`
+// before any adapter chunk evaluates.
+import './polyfills';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';

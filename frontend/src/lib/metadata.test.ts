@@ -2,10 +2,20 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { unavailableTokens, type TokenRegistry } from '@effectstream/mint-test-token-registry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchRegistry, MetadataUnavailableError, registryView } from './metadata';
+import {
+  fetchRegistry,
+  isLocalRegistryHost,
+  localMetadataAvailable,
+  localMetadataProbeAllowed,
+  MetadataUnavailableError,
+  registryView,
+} from './metadata';
 import { bundledClientArtifacts } from './clientArtifacts';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 const unavailableRegistry: TokenRegistry = {
   schemaVersion: '1.0.0',
@@ -211,5 +221,125 @@ describe('runtime token registry', () => {
       headers: { 'Content-Type': 'text/html' },
     })));
     await expect(fetchRegistry('preview')).rejects.toThrow('Expected JSON metadata');
+  });
+});
+
+describe('local registry host classification', () => {
+  it('accepts loopback, unspecified, private, link-local and reserved local names', () => {
+    for (const hostname of [
+      'localhost',
+      'LocalHost',
+      'stack.localhost',
+      '127.0.0.1',
+      '127.4.5.6',
+      '0.0.0.0',
+      '10.0.0.7',
+      '172.16.0.1',
+      '172.31.255.254',
+      '192.168.1.10',
+      '169.254.10.20',
+      '::1',
+      '[::1]',
+      'fd12:3456:789a::1',
+      'FC00::1',
+      '[fe80::1ff:fe23:4567:890a]',
+      'issuer.local',
+      'registry.internal',
+      'box.lan',
+      'router.home.arpa',
+    ]) {
+      expect(isLocalRegistryHost(hostname), hostname).toBe(true);
+    }
+  });
+
+  it('treats every other hostname as public, including names that resolve to loopback', () => {
+    for (const hostname of [
+      'mint-test-tokens.pages.dev',
+      'MINT-TEST-TOKENS.PAGES.DEV',
+      'loopback-alias.example.com',
+      '127-0-0-1.example.net',
+      'localhost.example.com',
+      'notlocalhost',
+      'mylocal',
+      '11.0.0.1',
+      '172.15.0.1',
+      '172.32.0.1',
+      '192.169.1.10',
+      '169.253.1.1',
+      '127.0.0.256',
+      '2001:db8::1',
+      '[2606:4700::1111]',
+      'fe7f::1',
+      'fec0::1',
+      '',
+    ]) {
+      expect(isLocalRegistryHost(hostname), hostname).toBe(false);
+    }
+  });
+});
+
+describe('local registry probe policy', () => {
+  const publicHost = { hostname: 'mint-test-tokens.pages.dev', search: '' };
+
+  it('probes on every host in Vite dev mode', () => {
+    expect(import.meta.env.DEV).toBe(true);
+    expect(localMetadataProbeAllowed(publicHost)).toBe(true);
+  });
+
+  it('allows the probe only for local hosts or an explicit request in a production build', () => {
+    vi.stubEnv('DEV', false);
+    expect(localMetadataProbeAllowed(publicHost)).toBe(false);
+    expect(localMetadataProbeAllowed({ ...publicHost, search: '?local=1' })).toBe(true);
+    expect(localMetadataProbeAllowed({ ...publicHost, search: '?network=undeployed' })).toBe(true);
+    expect(localMetadataProbeAllowed({ ...publicHost, search: '?network=preprod' })).toBe(false);
+    expect(localMetadataProbeAllowed({ hostname: '127.0.0.1', search: '' })).toBe(true);
+    expect(localMetadataProbeAllowed({ hostname: '[::1]', search: '' })).toBe(true);
+  });
+
+  it('never requests the local registry from a public host', async () => {
+    vi.stubEnv('DEV', false);
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+
+    await expect(localMetadataAvailable(undefined, publicHost)).resolves.toBe(false);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('enables the local option on a public host for ?local=1 without probing', async () => {
+    vi.stubEnv('DEV', false);
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+
+    await expect(localMetadataAvailable(undefined, { ...publicHost, search: '?local=1' })).resolves.toBe(true);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('issues one HEAD probe from loopback and honours the published content type', async () => {
+    vi.stubEnv('DEV', false);
+    const request = vi.fn(async () => new Response(null, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    }));
+    vi.stubGlobal('fetch', request);
+
+    await expect(localMetadataAvailable(undefined, { hostname: '127.0.0.1', search: '' })).resolves.toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('/metadata.undeployed.json', expect.objectContaining({
+      method: 'HEAD',
+      cache: 'no-store',
+    }));
+  });
+
+  it('probes a public host that explicitly selects the undeployed network and reports a real 404', async () => {
+    vi.stubEnv('DEV', false);
+    const request = vi.fn(async () => new Response('Metadata not found', { status: 404 }));
+    vi.stubGlobal('fetch', request);
+
+    await expect(localMetadataAvailable(undefined, {
+      ...publicHost,
+      search: '?network=undeployed',
+    })).resolves.toBe(false);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('/metadata.undeployed.json', expect.objectContaining({ method: 'HEAD' }));
   });
 });
