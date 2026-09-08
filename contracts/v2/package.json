@@ -7,6 +7,7 @@
     "deploy": "node --import tsx deploy.ts deploy",
     "verify": "node --import tsx deploy.ts verify",
     "verify:compatibility": "node --import tsx deploy.ts verify-compatible",
+    "publish:compatibility": "node --import tsx deploy.ts publish-compatible",
     "test:wallet": "node --import tsx mint-wallet-test.ts",
     "typecheck": "tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck deploy.ts mint-wallet-test.ts ../../scripts/lib/*.ts",
     "test:receiver": "RECEIVER_PROFILE=v2 node ../../test/receiver-runtime.mjs"
